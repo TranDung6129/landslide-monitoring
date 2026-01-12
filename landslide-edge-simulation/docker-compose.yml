@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  rain:
+    build: ./simulator
+    container_name: ${CLUSTER_ID}-rain
+    command: python rain_sim.py
+    restart: always
+    environment:
+      - MQTT_BROKER=${MQTT_BROKER}
+      - MQTT_PORT=${MQTT_PORT}
+      - CLUSTER_ID=${CLUSTER_ID}
+      - SENSOR_TYPE=rain
+      - CLIENT_PREFIX=${CLUSTER_ID}_rain
+    volumes:
+      - ./simulator/sensors_config.json:/app/sensors_config.json
+
+  groundwater:
+    build: ./simulator
+    container_name: ${CLUSTER_ID}-ground
+    command: python water_sim.py
+    restart: always
+    environment:
+      - MQTT_BROKER=${MQTT_BROKER}
+      - MQTT_PORT=${MQTT_PORT}
+      - CLUSTER_ID=${CLUSTER_ID}
+      - SENSOR_TYPE=groundwater
+      - CLIENT_PREFIX=${CLUSTER_ID}_ground
+    volumes:
+      - ./simulator/sensors_config.json:/app/sensors_config.json
+
+  imu:
+    build: ./simulator
+    container_name: ${CLUSTER_ID}-imu
+    command: python imu_processing.py
+    restart: always
+    environment:
+      - MQTT_BROKER=${MQTT_BROKER}
+      - MQTT_PORT=${MQTT_PORT}
+      - CLUSTER_ID=${CLUSTER_ID}
+      - SENSOR_TYPE=imu
+      - CLIENT_PREFIX=${CLUSTER_ID}_imu
+    volumes:
+      - ./simulator/sensors_config.json:/app/sensors_config.json
+
+  gnss:
+    build: ./simulator
+    container_name: ${CLUSTER_ID}-gnss
+    command: python gnss_processing.py
+    restart: always
+    environment:
+      - MQTT_BROKER=${MQTT_BROKER}
+      - MQTT_PORT=${MQTT_PORT}
+      - CLUSTER_ID=${CLUSTER_ID}
+      - SENSOR_TYPE=gnss
+      - CLIENT_PREFIX=${CLUSTER_ID}_gnss
+    volumes:
+      - ./simulator/sensors_config.json:/app/sensors_config.json

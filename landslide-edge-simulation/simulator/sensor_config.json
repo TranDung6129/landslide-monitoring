@@ -1,0 +1,44 @@
+{
+  "rain": {
+    "frequency": 1.0,
+    "unit": "mm",
+    "simulation": {
+      "base_rainfall_rate": 0.0,
+      "rainfall_variation": 5.0,
+      "accumulation_period": 60
+    }
+  },
+  "groundwater": {
+    "frequency": 1.0,
+    "unit": "m",
+    "simulation": {
+      "base_water_level": 2.5,
+      "water_level_variation": 0.1,
+      "base_pore_pressure": 24.5,
+      "pore_pressure_variation": 1.0
+    }
+  },
+  "imu": {
+    "frequency": 10.0,
+    "unit": "m/s²",
+    "simulation": {
+      "base_acceleration": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -9.81
+      },
+      "acceleration_noise": 0.1,
+      "angular_velocity_noise": 0.01,
+      "tilt_noise": 0.5
+    }
+  },
+  "gnss": {
+    "frequency": 1.0,
+    "unit": "degrees",
+    "simulation": {
+      "base_latitude": 21.0285,
+      "base_longitude": 105.8542,
+      "position_noise": 0.00001
+    }
+  }
+}
