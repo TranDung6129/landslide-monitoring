@@ -26,10 +26,10 @@ jobs:
           # 2. Build lại image (cập nhật code Spark/Bridge mới nhất)
           # Gán tag phiên bản để quản lý image chuyên nghiệp hơn
           export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
-          docker compose build
+          docker-compose build
           
           # 3. Up lại container 
-          docker compose up -d --remove-orphans
+          docker-compose up -d --remove-orphans
           
           # 4. RESTART SPARK JOB
           echo "Đang restart Spark Job..."
