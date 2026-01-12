@@ -1,0 +1,49 @@
+name: Deploy Server Production
+
+on:
+  push:
+    tags:
+      - 'v*' # Chỉ chạy khi đánh tag (ví dụ v1.0, v1.1)
+
+jobs:
+  deploy:
+    runs-on: self-hosted # QUAN TRỌNG: Lệnh này gọi runner trên server triển khai
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Server
+        run: |
+          echo "Bắt đầu deploy phiên bản ${{ steps.get_version.outputs.VERSION }}..."
+          
+          # 1. Di chuyển vào thư mục server
+          cd landslide-server
+          
+          # 2. Build lại image (cập nhật code Spark/Bridge mới nhất)
+          # Gán tag phiên bản để quản lý image chuyên nghiệp hơn
+          export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
+          docker compose build
+          
+          # 3. Up lại container 
+          docker compose up -d --remove-orphans
+          
+          # 4. RESTART SPARK JOB
+          echo "Đang restart Spark Job..."
+          
+          # Restart container Spark Master để kill job cũ
+          docker restart spark-master
+          
+          # Đợi 10s cho Master khởi động xong
+          sleep 10
+          
+          # Submit job mới
+          docker exec -d spark-master /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+            /app/spark_jobs/processor.py
+
+          echo "Deploy thành công!"

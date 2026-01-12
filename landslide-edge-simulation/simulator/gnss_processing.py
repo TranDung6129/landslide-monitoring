@@ -4,8 +4,8 @@ import json
 import time
 import random
 import math
-import os  # <--- THÊM: Để đọc biến môi trường
-import paho.mqtt.client as mqtt
+import os  
+import paho.mqtt.client as mqtt # type:ignore  
 from datetime import datetime
 from typing import Dict, Any, Tuple
 

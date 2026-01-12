@@ -1,6 +1,6 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, when, window, avg, max, to_timestamp
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql import SparkSession  # pyright: ignore[reportMissingImports]
+from pyspark.sql.functions import from_json, col, when, window, avg, max, to_timestamp  # pyright: ignore[reportMissingImports]
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType  # pyright: ignore[reportMissingImports]
 
 # 1. Khoi tao Spark
 spark = SparkSession.builder \
@@ -71,6 +71,7 @@ query = windowed_df.writeStream \
     .outputMode("update") \
     .format("console") \
     .option("truncate", "false") \
+    .option("checkpointLocation", "/app/spark_jobs/checkpoint") \
     .start()
 
 query.awaitTermination()
