@@ -81,11 +81,13 @@ jobs:
           cd server
           export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
           
+          export COMPOSE_PROJECT_NAME=landslide_server
+
           # Tải image mới nhất về (Lúc này chắc chắn đã có trên kho)
           docker-compose pull
           
           # Up container
-          docker-compose up -d --remove-orphans
+          docker-compose up -d --remove-orphans --force-recreate
           
           # Restart Spark
           echo "Restarting Spark..."
@@ -102,7 +104,7 @@ jobs:
           # Giả sử Gateway cũng dùng chung version
           # Nếu gateway chạy máy khác thì bỏ đoạn này đi
           docker-compose pull
-          docker-compose up -d --remove-orphans
+          docker-compose up -d --remove-orphans --force-recreate
 
           echo "All Systems Deployed Successfully!"
 
