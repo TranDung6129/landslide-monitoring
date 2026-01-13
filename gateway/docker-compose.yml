@@ -9,8 +9,8 @@ services:
       - "9001:9001"
     volumes:
       - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+      - mosquitto_data:/mosquitto/data
     restart: always
 
   mqtt-bridge:
