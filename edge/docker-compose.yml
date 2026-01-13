@@ -12,6 +12,7 @@ services:
       - CLUSTER_ID=${CLUSTER_ID}
       - SENSOR_TYPE=rain
       - CLIENT_PREFIX=${CLUSTER_ID}_rain
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./sensors_config.json:/app/sensors_config.json
 
@@ -26,6 +27,7 @@ services:
       - CLUSTER_ID=${CLUSTER_ID}
       - SENSOR_TYPE=groundwater
       - CLIENT_PREFIX=${CLUSTER_ID}_ground
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./sensors_config.json:/app/sensors_config.json
 
@@ -40,6 +42,7 @@ services:
       - CLUSTER_ID=${CLUSTER_ID}
       - SENSOR_TYPE=imu
       - CLIENT_PREFIX=${CLUSTER_ID}_imu
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./sensors_config.json:/app/sensors_config.json
 
@@ -54,5 +57,6 @@ services:
       - CLUSTER_ID=${CLUSTER_ID}
       - SENSOR_TYPE=gnss
       - CLIENT_PREFIX=${CLUSTER_ID}_gnss
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./sensors_config.json:/app/sensors_config.json

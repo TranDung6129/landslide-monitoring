@@ -29,3 +29,5 @@ services:
       - KAFKA_BROKER=${KAFKA_ADDR:-kafka:29092}
     restart: always
 
+volumes:
+  mosquitto_data:
