@@ -1,0 +1,56 @@
+name: Build & Push Docker Images
+
+on:
+  push:
+    tags:
+      - 'v*' # Chạy khi có tag mới
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Cấp quyền ghi vào GHCR
+      
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # 1. Đăng nhập vào Github Container Registry
+      # Sử dụng luôn Token có sẵn, không cần setup mật khẩu gì cả
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Build & Push GATEWAY
+      - name: Build and Push Gateway
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/landslide-gateway
+          TAG=${{ steps.get_version.outputs.VERSION }}
+          
+          cd gateway # Vào thư mục gateway
+          
+          # Build
+          docker build -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
+          
+          # Push lên GHCR
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
+
+      # 3. Build & Push SERVER 
+      - name: Build and Push Server
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/landslide-server
+          TAG=${{ steps.get_version.outputs.VERSION }}
+          
+          cd server
+          docker build -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest

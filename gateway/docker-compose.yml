@@ -1,0 +1,31 @@
+version: '3'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    restart: always
+
+  mqtt-bridge:
+    # 1. KHÔNG DÙNG 'build: .'. Hãy dùng Image đã đóng gói trên Github
+    image: ghcr.io/trandung6129/landslide-gateway:latest
+    container_name: mqtt-bridge
+    depends_on:
+      - mosquitto
+    environment:
+      # Cấu hình nội bộ (Bridge -> Mosquitto cùng trong Docker)
+      - MQTT_BROKER=mosquitto
+      
+      # 2. Cấu hình trỏ về Server Kafka (QUAN TRỌNG)
+      # Nếu Gateway chạy khác máy với Server, hãy điền IP thật của Server vào đây
+      # Ví dụ: 192.168.1.100:9092 thay vì kafka:29092
+      - KAFKA_BROKER=${KAFKA_ADDR:-kafka:29092}
+    restart: always
+

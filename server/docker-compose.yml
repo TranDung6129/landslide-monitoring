@@ -27,26 +27,6 @@ services:
       # KAFKA_HEAP_OPTS: "-Xmx400M -Xms400M"
     restart: always
 
-  mosquitto:
-    image: eclipse-mosquitto
-    container_name: mosquitto
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    restart: always
-
-  mqtt-bridge:
-    build: .
-    container_name: mqtt-bridge
-    depends_on:
-      - kafka
-      - mosquitto
-    restart: always
-
   # --- PHẦN QUAN TRỌNG ĐÃ SỬA ---
   spark-master:
     image: apache/spark:3.5.0
@@ -78,3 +58,4 @@ services:
     volumes:
       - ./spark_jobs:/app/spark_jobs
     restart: always
+

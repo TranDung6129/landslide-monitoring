@@ -1,0 +1,31 @@
+# --- 1. Python & Môi trường ảo ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+.venv
+
+# --- 2. Cấu hình & Bảo mật ---
+.env
+*.env
+
+# --- 3. Dữ liệu Runtime của Gateway và Server ---
+# Bỏ qua dữ liệu persistence của Mosquitto
+gateway/mosquitto/data/*
+!gateway/mosquitto/data/.gitkeep
+gateway/mosquitto/log/*
+
+# Bỏ qua Checkpoint của Spark (Checkpoint được Spark tự động tạo)
+server/spark_jobs/checkpoints/
+
+# --- 4. Logs & Debug ---
+*.log
+npm-debug.log*
+
+# --- 5. IDE & Hệ điều hành ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

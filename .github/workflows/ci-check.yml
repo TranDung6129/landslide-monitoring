@@ -1,0 +1,37 @@
+name: CI Code Check
+
+# Chạy mỗi khi push vào nhánh main
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-quality:
+    name: Check Code Quality
+    runs-on: ubuntu-latest # Chạy trên Cloud của Github
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Kiểm tra cú pháp Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Linting Tool
+        run: pip install flake8
+      
+      - name: Check Python Syntax (Server)
+        run: |
+          # Kiểm tra thư mục server
+          flake8 landslide-server/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # 2. Kiểm tra xem có Build được Docker không (Build nháp)
+      - name: Test Docker Build
+        run: |
+          cd landslide-server
+          # Chỉ build thử để xem có lỗi Dockerfile không, không chạy container
+          docker compose build
