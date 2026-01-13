@@ -27,11 +27,11 @@ jobs:
       - name: Check Python Syntax (Server)
         run: |
           # Kiểm tra thư mục server
-          flake8 landslide-server/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 server/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
       # 2. Kiểm tra xem có Build được Docker không (Build nháp)
       - name: Test Docker Build
         run: |
-          cd landslide-server
+          cd server
           # Chỉ build thử để xem có lỗi Dockerfile không, không chạy container
           docker compose build
