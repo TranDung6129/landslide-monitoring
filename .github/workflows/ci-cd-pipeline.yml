@@ -81,11 +81,11 @@ jobs:
           cd server
           export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
           
-          # Tải ảnh mới nhất về (Lúc này chắc chắn đã có trên kho)
-          docker compose pull
+          # Tải image mới nhất về (Lúc này chắc chắn đã có trên kho)
+          docker-compose pull
           
           # Up container
-          docker compose up -d --remove-orphans
+          docker-compose up -d --remove-orphans
           
           # Restart Spark
           echo "Restarting Spark..."
@@ -101,8 +101,8 @@ jobs:
           cd ../gateway
           # Giả sử Gateway cũng dùng chung version
           # Nếu gateway chạy máy khác thì bỏ đoạn này đi
-          docker compose pull
-          docker compose up -d --remove-orphans
+          docker-compose pull
+          docker-compose up -d --remove-orphans
 
           echo "All Systems Deployed Successfully!"
 
