@@ -1,0 +1,108 @@
+name: CI/CD Pipeline (Build -> Deploy)
+
+on:
+  push:
+    tags:
+      - 'v*' # Chạy khi đánh tag
+
+permissions:
+  contents: read
+  packages: write # Cần quyền write để push ảnh, read để pull ảnh
+
+jobs:
+  # --- GIAI ĐOẠN 1: BUILD & PUSH (Chạy trên Github Cloud) ---
+  build-and-push:
+    name: Build & Push Docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build Gateway
+      - name: Build & Push Gateway
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME=ghcr.io/$OWNER_LC/landslide-gateway
+          TAG=${{ steps.get_version.outputs.VERSION }}
+          
+          cd gateway
+          docker build -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
+
+      # Build Server
+      - name: Build & Push Server
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME=ghcr.io/$OWNER_LC/landslide-server
+          TAG=${{ steps.get_version.outputs.VERSION }}
+          
+          cd server
+          docker build -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
+
+  # --- GIAI ĐOẠN 2: DEPLOY (Chạy trên Server thật) ---
+  deploy:
+    name: Deploy to Server
+    needs: build-and-push # <--- CHÌA KHÓA Ở ĐÂY: Phải chờ thằng trên xong mới được chạy
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy Steps
+        run: |
+          echo "Starting deploy version ${{ steps.get_version.outputs.VERSION }}..."
+          
+          # --- 1. SERVER APP ---
+          cd server
+          export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
+          
+          # Tải ảnh mới nhất về (Lúc này chắc chắn đã có trên kho)
+          docker compose pull
+          
+          # Up container
+          docker compose up -d --remove-orphans
+          
+          # Restart Spark
+          echo "Restarting Spark..."
+          docker restart spark-master
+          sleep 10
+          docker exec -d spark-master /opt/spark/bin/spark-submit \
+            --master spark://spark-master:7077 \
+            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+            /app/spark_jobs/processor.py
+            
+          # --- 2. GATEWAY (Nếu chạy chung server) ---
+          echo "Deploying Gateway..."
+          cd ../gateway
+          # Giả sử Gateway cũng dùng chung version
+          # Nếu gateway chạy máy khác thì bỏ đoạn này đi
+          docker compose pull
+          docker compose up -d --remove-orphans
+
+          echo "All Systems Deployed Successfully!"
+
