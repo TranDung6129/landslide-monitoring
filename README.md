@@ -1,79 +1,81 @@
-# Hệ thống Giám sát và Cảnh báo Sớm Sạt lở Đất
+# Hệ thống giám sát và cảnh báo sớm sạt lở đất
 
-Hệ thống IoT phân tán thời gian thực, thu thập dữ liệu từ các cảm biến môi trường (mưa, GNSS, IMU, nước ngầm), truyền tải qua MQTT/Kafka và xử lý dòng dữ liệu lớn (Stream Processing) bằng Apache Spark.
+Hệ thống IoT phân tán thời gian thực, thu thập dữ liệu từ các cảm biến môi trường (mưa, GNSS, IMU, nước ngầm), truyền tải qua MQTT/Kafka và xử lý luồng dữ liệu bằng Apache Spark.
 
-Dự án được container hóa hoàn toàn bằng Docker và tích hợp CI/CD tự động qua Github Actions.
+Dự án được đóng gói hoàn toàn bằng Docker và tích hợp tự động hóa triển khai qua Github Actions.
 
 ---
 
 ## Mục lục
 
-- [Kiến trúc Hệ thống](#kiến-trúc-hệ-thống)
-- [Yêu cầu Hệ thống](#yêu-cầu-hệ-thống)
-- [Hướng dẫn Triển khai](#hướng-dẫn-triển-khai)
-  - [1. Triển khai Server](#1-triển-khai-server-trung-tâm)
-  - [2. Triển khai Gateway](#2-triển-khai-gateway)
-  - [3. Triển khai Edge Node](#3-triển-khai-edge-node)
-- [Quy trình Phát triển](#quy-trình-phát-triển-và-cicd)
-- [Cấu hình Nâng cao](#cấu-hình-nâng-cao)
-- [Khắc phục Sự cố](#khắc-phục-sự-cố)
+- [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
+- [Yêu cầu hệ thống](#yêu-cầu-hệ-thống)
+- [Hướng dẫn triển khai](#hướng-dẫn-triển-khai)
+  - [1. Triển khai máy chủ trung tâm](#1-triển-khai-máy-chủ-trung-tâm)
+  - [2. Triển khai cổng trung chuyển](#2-triển-khai-cổng-trung-chuyển)
+  - [3. Triển khai nút biên](#3-triển-khai-nút-biên)
+- [Quy trình phát triển](#quy-trình-phát-triển)
+- [Cấu hình nâng cao](#cấu-hình-nâng-cao)
+- [Khắc phục sự cố](#khắc-phục-sự-cố)
 
 ---
 
-## Kiến trúc Hệ thống
+## Kiến trúc hệ thống
 
-Hệ thống được thiết kế theo mô hình microservices, chia thành 3 thành phần độc lập có thể triển khai trên các thiết bị vật lý khác nhau:
+Hệ thống được thiết kế theo mô hình vi dịch vụ (microservices), chia thành 3 thành phần độc lập có thể triển khai trên các thiết bị vật lý khác nhau:
 
-### Tổng quan Luồng dữ liệu
+### Tổng quan luồng dữ liệu
 
 ```
-[Edge Nodes] --MQTT--> [Gateway] --Kafka--> [Server] --Spark--> [Analytics]
+[Nút biên] --MQTT--> [Cổng trung chuyển] --Kafka--> [Máy chủ] --Spark--> [Phân tích]
 ```
 
-### Chi tiết các Thành phần
+### Chi tiết các thành phần
 
-**1. Edge Node (Sensor Layer)**
-- Vai trò: Thu thập dữ liệu từ cảm biến và gửi về Gateway
+**1. Nút biên (Edge Node) - Tầng cảm biến**
+- Vai trò: Thu thập dữ liệu từ cảm biến và gửi về cổng trung chuyển
 - Công nghệ: Python, MQTT Client
-- Thiết bị khuyến nghị: Raspberry Pi, Jetson Nano, Arduino với MQTT
-- Cảm biến hỗ trợ: Rain gauge, GNSS/GPS, IMU (accelerometer/gyroscope), Water level sensors
+- Thiết bị đề xuất: Raspberry Pi, Jetson Nano, Arduino có hỗ trợ MQTT
+- Cảm biến: Đo mưa, GNSS/GPS, IMU (gia tốc kế/con quay hồi chuyển), Mực nước ngầm
 
-**2. Gateway (Data Aggregation Layer)**
-- Vai trò: Trung chuyển và chuyển đổi giao thức (MQTT to Kafka)
+**2. Cổng trung chuyển (Gateway) - Tầng tập hợp dữ liệu**
+- Vai trò: Trung chuyển và chuyển đổi giao thức (MQTT sang Kafka)
 - Thành phần:
-  - Eclipse Mosquitto: MQTT Broker
-  - MQTT-to-Kafka Bridge: Python service chuyển đổi giao thức
-- Thiết bị khuyến nghị: Server on-premise, IoT Gateway device
+  - Eclipse Mosquitto: Môi giới MQTT (MQTT Broker)
+  - Cầu nối MQTT-Kafka: Dịch vụ Python chuyển đổi giao thức
+- Thiết bị đề xuất: Máy chủ tại chỗ, thiết bị cổng IoT
 
-**3. Server (Processing & Storage Layer)**
-- Vai trò: Lưu trữ message queue, xử lý stream data, phát hiện bất thường
+**3. Máy chủ (Server) - Tầng xử lý và lưu trữ**
+- Vai trò: Lưu trữ hàng đợi thông điệp, xử lý luồng dữ liệu, phát hiện bất thường
 - Thành phần:
-  - Apache Kafka + Zookeeper: Message broker & coordinator
-  - Apache Spark: Distributed stream processing engine
-- Thiết bị khuyến nghị: Cloud server (AWS EC2, DigitalOcean), Workstation
+  - Apache Kafka + Zookeeper: Môi giới thông điệp và bộ điều phối
+  - Apache Spark: Công cụ xử lý luồng phân tán
+- Thiết bị đề xuất: Máy chủ đám mây (AWS EC2, DigitalOcean), máy trạm
 
-### Kiến trúc Mạng
+### Kiến trúc mạng
 
 ```
-Cluster A (Vị trí 1)          Cluster B (Vị trí 2)
+Cụm A (Vị trí 1)              Cụm B (Vị trí 2)
 ┌─────────────────┐           ┌─────────────────┐
-│  Edge Nodes     │           │  Edge Nodes     │
-│  - Rain sensor  │           │  - Rain sensor  │
-│  - GNSS sensor  │           │  - GNSS sensor  │
-│  - IMU sensor   │           │  - IMU sensor   │
+│  Nút biên       │           │  Nút biên       │
+│  - Cảm biến mưa │           │  - Cảm biến mưa │
+│  - GNSS         │           │  - GNSS         │
+│  - IMU          │           │  - IMU          │
 └────────┬────────┘           └────────┬────────┘
          │ MQTT                        │ MQTT
          ▼                             ▼
 ┌─────────────────┐           ┌─────────────────┐
-│    Gateway      │           │    Gateway      │
+│  Cổng trung     │           │  Cổng trung     │
+│  chuyển         │           │  chuyển         │
 │  - Mosquitto    │           │  - Mosquitto    │
-│  - MQTT Bridge  │           │  - MQTT Bridge  │
+│  - Cầu nối MQTT │           │  - Cầu nối MQTT │
 └────────┬────────┘           └────────┬────────┘
          │ Kafka                       │ Kafka
          └─────────────┬───────────────┘
                        ▼
               ┌─────────────────┐
-              │  Central Server │
+              │  Máy chủ trung  │
+              │  tâm            │
               │  - Kafka        │
               │  - Spark        │
               └─────────────────┘
@@ -81,51 +83,51 @@ Cluster A (Vị trí 1)          Cluster B (Vị trí 2)
 
 ---
 
-## Yêu cầu Hệ thống
+## Yêu cầu hệ thống
 
 ### Phần mềm
 
 - Docker Engine 20.10 trở lên
-- Docker Compose V2 (hoặc docker-compose V1.29+)
-- Git (để clone repository)
+- Docker Compose phiên bản 2 (hoặc docker-compose phiên bản 1.29+)
+- Git (để tải mã nguồn)
 
-### Phần cứng khuyến nghị
+### Phần cứng đề xuất
 
-**Server:**
-- CPU: 4 cores trở lên
-- RAM: 4GB trở lên (8GB khuyến nghị cho Spark)
-- Disk: 20GB trở lên
-- Network: Địa chỉ IP tĩnh hoặc domain name
+**Máy chủ:**
+- CPU: 4 nhân trở lên
+- RAM: 4GB trở lên (đề xuất 8GB cho Spark)
+- Ổ cứng: 20GB trở lên
+- Mạng: Địa chỉ IP tĩnh hoặc tên miền
 
-**Gateway:**
-- CPU: 2 cores
+**Cổng trung chuyển:**
+- CPU: 2 nhân
 - RAM: 1GB
-- Disk: 5GB
-- Network: Kết nối ổn định tới Server
+- Ổ cứng: 5GB
+- Mạng: Kết nối ổn định tới máy chủ
 
-**Edge Node:**
-- CPU: 1 core (Raspberry Pi 3 trở lên)
+**Nút biên:**
+- CPU: 1 nhân (Raspberry Pi 3 trở lên)
 - RAM: 512MB
-- Disk: 2GB
-- Network: Kết nối ổn định tới Gateway (WiFi/Ethernet/4G)
+- Ổ cứng: 2GB
+- Mạng: Kết nối ổn định tới cổng trung chuyển (WiFi/Ethernet/4G)
 
-### Cổng mạng (Ports)
+### Các cổng mạng cần thiết
 
 Đảm bảo các cổng sau chưa bị chiếm dụng:
 
-| Service | Port | Mô tả |
+| Dịch vụ | Cổng | Mô tả |
 |---------|------|-------|
-| Kafka | 9092 | External client connection |
-| Kafka Internal | 29092 | Internal broker communication |
-| MQTT | 1883 | MQTT client connection |
-| MQTT WebSocket | 9001 | MQTT over WebSocket |
-| Spark Master UI | 9090 | Web interface (mapped từ 8080) |
-| Spark Master | 7077 | Cluster communication |
-| Zookeeper | 2181 | Internal service |
+| Kafka | 9092 | Kết nối từ client bên ngoài |
+| Kafka nội bộ | 29092 | Giao tiếp giữa các broker |
+| MQTT | 1883 | Kết nối từ client MQTT |
+| MQTT WebSocket | 9001 | MQTT qua WebSocket |
+| Spark Master UI | 9090 | Giao diện web (ánh xạ từ 8080) |
+| Spark Master | 7077 | Giao tiếp cụm |
+| Zookeeper | 2181 | Dịch vụ nội bộ |
 
 ---
 
-## Hướng dẫn Triển khai
+## Hướng dẫn triển khai
 
 ### Chuẩn bị
 
@@ -143,9 +145,9 @@ docker --version
 docker compose version
 ```
 
-### 1. Triển khai Server (Trung tâm)
+### 1. Triển khai máy chủ trung tâm
 
-Server là thành phần cần chạy đầu tiên vì Gateway và Edge sẽ kết nối tới đây.
+Máy chủ là thành phần cần chạy đầu tiên vì cổng trung chuyển và nút biên sẽ kết nối tới đây.
 
 **Bước 1: Di chuyển vào thư mục server**
 
@@ -155,9 +157,9 @@ cd server
 
 **Bước 2: Kiểm tra file cấu hình**
 
-File `docker-compose.yml` chứa cấu hình cho Kafka, Zookeeper và Spark. Mặc định không cần sửa gì.
+File `docker-compose.yml` chứa cấu hình cho Kafka, Zookeeper và Spark. Mặc định không cần chỉnh sửa.
 
-**Bước 3: Khởi động các services**
+**Bước 3: Khởi động các dịch vụ**
 
 ```bash
 export COMPOSE_PROJECT_NAME=landslide_server
@@ -167,23 +169,23 @@ docker-compose up -d
 **Bước 4: Kiểm tra trạng thái**
 
 ```bash
-# Xem logs
+# Xem nhật ký
 docker-compose logs -f
 
-# Kiểm tra containers đang chạy
+# Kiểm tra các container đang chạy
 docker-compose ps
 ```
 
-Bạn sẽ thấy 4 containers:
-- `zookeeper`: Coordination service
-- `kafka`: Message broker
-- `spark-master`: Spark master node
-- `spark-worker`: Spark worker node
+Bạn sẽ thấy 4 container:
+- `zookeeper`: Dịch vụ điều phối
+- `kafka`: Môi giới thông điệp
+- `spark-master`: Nút chủ Spark
+- `spark-worker`: Nút làm việc Spark
 
-**Bước 5: Submit Spark Job**
+**Bước 5: Khởi chạy công việc Spark**
 
 ```bash
-# Submit job xử lý stream data
+# Gửi công việc xử lý luồng dữ liệu
 docker exec -d spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
@@ -192,16 +194,16 @@ docker exec -d spark-master /opt/spark/bin/spark-submit \
 
 **Bước 6: Xác minh**
 
-- Truy cập Spark Master UI: `http://<server-ip>:9090`
-- Kiểm tra job đang chạy trong tab "Running Applications"
+- Truy cập giao diện Spark Master: `http://<dia-chi-ip-may-chu>:9090`
+- Kiểm tra công việc đang chạy trong tab "Running Applications"
 
-**Lưu ý:** Ghi nhớ địa chỉ IP của server này (dùng `ip addr` hoặc `hostname -I`) để cấu hình cho Gateway.
+**Lưu ý:** Ghi nhớ địa chỉ IP của máy chủ này (dùng lệnh `ip addr` hoặc `hostname -I`) để cấu hình cho cổng trung chuyển.
 
 ---
 
-### 2. Triển khai Gateway
+### 2. Triển khai cổng trung chuyển
 
-Gateway có thể chạy trên cùng máy với Server hoặc máy riêng biệt.
+Cổng trung chuyển có thể chạy trên cùng máy với máy chủ hoặc máy riêng biệt.
 
 **Bước 1: Di chuyển vào thư mục gateway**
 
@@ -209,30 +211,30 @@ Gateway có thể chạy trên cùng máy với Server hoặc máy riêng biệt
 cd gateway
 ```
 
-**Bước 2: Cấu hình kết nối tới Server**
+**Bước 2: Cấu hình kết nối tới máy chủ**
 
-Sửa file `docker-compose.yml`:
+Chỉnh sửa file `docker-compose.yml`:
 
 ```yaml
 environment:
   - MQTT_BROKER=mosquitto
-  - KAFKA_BROKER=${KAFKA_ADDR:-192.168.1.100:9092}  # Thay bằng IP Server
+  - KAFKA_BROKER=${KAFKA_ADDR:-192.168.1.100:9092}  # Thay bằng IP máy chủ
 ```
 
-Hoặc set biến môi trường:
+Hoặc thiết lập biến môi trường:
 
 ```bash
-export KAFKA_ADDR=192.168.1.100:9092  # Thay bằng IP thật của Server
+export KAFKA_ADDR=192.168.1.100:9092  # Thay bằng IP thật của máy chủ
 ```
 
-**Bước 3: Khởi động Gateway**
+**Bước 3: Khởi động cổng trung chuyển**
 
 ```bash
 export COMPOSE_PROJECT_NAME=landslide_gateway
 docker-compose up -d
 ```
 
-**Bước 4: Kiểm tra logs**
+**Bước 4: Kiểm tra nhật ký**
 
 ```bash
 docker-compose logs -f mqtt-bridge
@@ -244,16 +246,16 @@ Bạn sẽ thấy:
 >>> Bridge: Da ket noi Kafka thanh cong!
 ```
 
-**Troubleshooting:** Nếu thấy lỗi "Connection refused to Kafka", kiểm tra:
-- Server Kafka đã chạy chưa (`docker ps` trên máy Server)
-- Firewall có block port 9092 không
+**Xử lý sự cố:** Nếu thấy lỗi "Connection refused to Kafka", kiểm tra:
+- Kafka trên máy chủ đã chạy chưa (dùng `docker ps` trên máy chủ)
+- Tường lửa có chặn cổng 9092 không
 - IP trong `KAFKA_BROKER` có đúng không
 
 ---
 
-### 3. Triển khai Edge Node
+### 3. Triển khai nút biên
 
-Edge Node mô phỏng các cảm biến gửi dữ liệu tới Gateway.
+Nút biên mô phỏng các cảm biến gửi dữ liệu tới cổng trung chuyển.
 
 **Bước 1: Di chuyển vào thư mục edge**
 
@@ -261,25 +263,25 @@ Edge Node mô phỏng các cảm biến gửi dữ liệu tới Gateway.
 cd edge
 ```
 
-**Bước 2: Cấu hình kết nối tới Gateway**
+**Bước 2: Cấu hình kết nối tới cổng trung chuyển**
 
 Tạo file `.env` trong thư mục `edge/`:
 
 ```bash
-MQTT_BROKER=192.168.1.50      # IP của Gateway
+MQTT_BROKER=192.168.1.50      # IP của cổng trung chuyển
 MQTT_PORT=1883
-CLUSTER_ID=cluster_A           # Định danh cụm sensor
+CLUSTER_ID=cluster_A           # Định danh cụm cảm biến
 ```
 
 **Bước 3: Cấu hình thông số cảm biến**
 
-Sửa file `sensor_config.json` để điều chỉnh thông số mô phỏng (tần suất gửi, ngưỡng giá trị, v.v.)
+Chỉnh sửa file `sensor_config.json` để điều chỉnh thông số mô phỏng (tần suất gửi, ngưỡng giá trị, v.v.)
 
-**Bước 4: Khởi động các sensor simulators**
+**Bước 4: Khởi động các bộ mô phỏng cảm biến**
 
 ```bash
 export CLUSTER_ID=cluster_A
-export MQTT_BROKER=192.168.1.50  # IP Gateway
+export MQTT_BROKER=192.168.1.50  # IP cổng trung chuyển
 export MQTT_PORT=1883
 
 docker-compose up -d
@@ -288,19 +290,19 @@ docker-compose up -d
 **Bước 5: Xem dữ liệu đang gửi**
 
 ```bash
-# Xem tất cả sensors
+# Xem tất cả cảm biến
 docker-compose logs -f
 
-# Xem chỉ rain sensor
+# Xem chỉ cảm biến mưa
 docker-compose logs -f rain
 
-# Xem chỉ GNSS sensor
+# Xem chỉ cảm biến GNSS
 docker-compose logs -f gnss
 ```
 
-**Kiểm tra dữ liệu đã tới Server chưa:**
+**Kiểm tra dữ liệu đã tới máy chủ chưa:**
 
-Trên máy Server, kiểm tra Kafka topic:
+Trên máy chủ, kiểm tra chủ đề Kafka:
 
 ```bash
 docker exec -it kafka kafka-console-consumer \
@@ -311,59 +313,59 @@ docker exec -it kafka kafka-console-consumer \
 
 ---
 
-## Quy trình Phát triển và CI/CD
+## Quy trình phát triển
 
-### Mô hình GitOps
+### Mô hình triển khai tự động
 
-Dự án áp dụng quy trình tự động hóa hoàn toàn:
+Dự án áp dụng quy trình tự động hóa:
 
 ```
-Developer Push Code --> CI Check --> Build Images --> Push to GHCR --> Auto Deploy
+Developer push code --> Kiểm tra tự động --> Build image --> Push lên GHCR --> Triển khai tự động
 ```
 
-### Workflow Chi tiết
+### Quy trình chi tiết
 
-**1. Continuous Integration (CI)**
+**1. Tích hợp liên tục (Continuous Integration)**
 
 File: `.github/workflows/ci-check.yml`
 
-Mỗi khi push code lên branch `main`, workflow này sẽ:
+Mỗi khi đẩy mã lên nhánh `main`, quy trình này sẽ:
 - Kiểm tra cú pháp Python (flake8, black)
-- Validate cấu hình YAML
-- Test cơ bản
+- Xác thực cấu hình YAML
+- Kiểm thử cơ bản
 
-**2. Continuous Deployment (CD)**
+**2. Triển khai liên tục (Continuous Deployment)**
 
 File: `.github/workflows/ci-cd-pipeline.yml`
 
-Kích hoạt khi tạo git tag có pattern `v*` (ví dụ: `v1.0.0`, `v2.1.3`)
+Kích hoạt khi tạo git tag có dạng `v*` (ví dụ: `v1.0.0`, `v2.1.3`)
 
-**Giai đoạn 1: Build & Push (chạy trên Github Cloud)**
-- Build Docker images cho Gateway và Server
-- Push images lên Github Container Registry (GHCR)
-- Tag images với version number và `latest`
+**Giai đoạn 1: Build và push (chạy trên Github Cloud)**
+- Build Docker image cho cổng trung chuyển và máy chủ
+- Push image lên Github Container Registry (GHCR)
+- Tag image với số phiên bản và `latest`
 
-**Giai đoạn 2: Deploy (chạy trên Self-hosted Runner)**
+**Giai đoạn 2: Deploy (chạy trên máy tự lưu trữ)**
 - Chờ giai đoạn 1 hoàn thành (`needs: build-and-push`)
-- Pull images mới từ GHCR
-- Deploy lên server thật
+- Pull image mới từ GHCR
+- Deploy lên máy chủ thật
 - Restart Spark job với code mới
 
-### Hướng dẫn Release Phiên bản Mới
+### Hướng dẫn phát hành phiên bản mới
 
 **Bước 1: Commit thay đổi**
 
 ```bash
 git add .
-git commit -m "feat: add anomaly detection algorithm"
+git commit -m "feat: thêm thuật toán phát hiện bất thường"
 git push origin main
 ```
 
 **Bước 2: Tạo tag**
 
 ```bash
-# Tag với message
-git tag -a v1.0.5 -m "Release version 1.0.5 - Add anomaly detection"
+# Tag có message
+git tag -a v1.0.5 -m "Release version 1.0.5 - Thêm phát hiện bất thường"
 
 # Push tag lên remote
 git push origin v1.0.5
@@ -375,26 +377,26 @@ git push origin v1.0.5
 - Chọn workflow "CI/CD Pipeline"
 - Xem tiến trình: Build --> Deploy (có mũi tên nối)
 
-**Bước 4: Xác minh trên Server**
+**Bước 4: Xác minh trên máy chủ**
 
 ```bash
-# Kiểm tra image version
+# Kiểm tra phiên bản image
 docker images | grep landslide
 
 # Kiểm tra Spark job mới
 docker logs spark-master | tail -20
 ```
 
-### Setup Self-hosted Runner
+### Cài đặt máy chạy tự lưu trữ
 
-Để workflow CD hoạt động, cần cài Github Runner trên server production:
+Để quy trình triển khai tự động hoạt động, cần cài Github Runner trên máy chủ sản xuất:
 
 **1. Tải và cài đặt:**
 
 ```bash
 mkdir -p ~/actions-runner && cd ~/actions-runner
 
-# Download runner (thay bằng link từ Github repo settings)
+# Tải runner (thay bằng liên kết từ Github repo settings)
 curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
   https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
 
@@ -405,10 +407,10 @@ tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
 
 ```bash
 # Lấy token từ: Settings > Actions > Runners > New self-hosted runner
-./config.sh --url https://github.com/<username>/<repo> --token <YOUR_TOKEN>
+./config.sh --url https://github.com/<ten-nguoi-dung>/<ten-repo> --token <TOKEN-CUA-BAN>
 ```
 
-**3. Chạy như service:**
+**3. Chạy như dịch vụ:**
 
 ```bash
 sudo ./svc.sh install
@@ -417,36 +419,36 @@ sudo ./svc.sh start
 
 ---
 
-## Cấu hình Nâng cao
+## Cấu hình nâng cao
 
 ### 1. Tăng hiệu năng Kafka
 
-Sửa `server/docker-compose.yml`:
+Chỉnh sửa `server/docker-compose.yml`:
 
 ```yaml
 kafka:
   environment:
-    KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"  # Tăng memory
+    KAFKA_HEAP_OPTS: "-Xmx1G -Xms1G"  # Tăng bộ nhớ
     KAFKA_NUM_NETWORK_THREADS: 8
     KAFKA_NUM_IO_THREADS: 8
 ```
 
-### 2. Tăng Worker cho Spark
+### 2. Tăng số nút làm việc cho Spark
 
-Sửa `server/docker-compose.yml`:
+Chỉnh sửa `server/docker-compose.yml`:
 
 ```yaml
 spark-worker:
   environment:
-    - SPARK_WORKER_CORES=4          # Tăng số cores
-    - SPARK_WORKER_MEMORY=2g        # Tăng memory
+    - SPARK_WORKER_CORES=4          # Tăng số nhân
+    - SPARK_WORKER_MEMORY=2g        # Tăng bộ nhớ
   deploy:
-    replicas: 2                      # Chạy 2 workers
+    replicas: 2                      # Chạy 2 nút làm việc
 ```
 
-### 3. Persistent Storage cho Kafka
+### 3. Lưu trữ bền vững cho Kafka
 
-Thêm named volumes:
+Thêm các ổ đĩa có tên:
 
 ```yaml
 volumes:
@@ -460,7 +462,7 @@ services:
 
 ### 4. Bảo mật MQTT
 
-Cấu hình authentication trong `gateway/mosquitto/config/mosquitto.conf`:
+Cấu hình xác thực trong `gateway/mosquitto/config/mosquitto.conf`:
 
 ```conf
 allow_anonymous false
@@ -473,24 +475,24 @@ certfile /mosquitto/config/server.crt
 keyfile /mosquitto/config/server.key
 ```
 
-Tạo password file:
+Tạo file mật khẩu:
 
 ```bash
-docker exec -it mosquitto mosquitto_passwd -c /mosquitto/config/passwd username
+docker exec -it mosquitto mosquitto_passwd -c /mosquitto/config/passwd ten-nguoi-dung
 ```
 
-### 5. Multi-cluster Deployment
+### 5. Triển khai nhiều cụm
 
-Để triển khai nhiều cụm edge nodes:
+Để triển khai nhiều cụm nút biên:
 
-**Cluster A (Vị trí 1):**
+**Cụm A (Vị trí 1):**
 ```bash
 export CLUSTER_ID=site_north
 export MQTT_BROKER=192.168.1.50
 docker-compose -p cluster_a up -d
 ```
 
-**Cluster B (Vị trí 2):**
+**Cụm B (Vị trí 2):**
 ```bash
 export CLUSTER_ID=site_south
 export MQTT_BROKER=192.168.2.50
@@ -499,36 +501,36 @@ docker-compose -p cluster_b up -d
 
 ---
 
-## Khắc phục Sự cố
+## Khắc phục sự cố
 
 ### 1. Container không khởi động
 
 **Triệu chứng:** `docker-compose ps` hiển thị "Exited" hoặc "Restarting"
 
 **Nguyên nhân:**
-- Port bị chiếm dụng
+- Cổng bị chiếm dụng
 - Lỗi cấu hình
 - Thiếu quyền truy cập
 
 **Giải pháp:**
 
 ```bash
-# Xem logs chi tiết
-docker-compose logs <service-name>
+# Xem nhật ký chi tiết
+docker-compose logs <ten-dich-vu>
 
-# Kiểm tra port
-sudo netstat -tulpn | grep <port>
+# Kiểm tra cổng
+sudo netstat -tulpn | grep <cong>
 
 # Dừng container xung đột
-docker stop <conflicting-container>
+docker stop <container-xung-dot>
 
-# Recreate container
-docker-compose up -d --force-recreate <service-name>
+# Tạo lại container
+docker-compose up -d --force-recreate <ten-dich-vu>
 ```
 
-### 2. MQTT Bridge không kết nối được Kafka
+### 2. Cầu nối MQTT không kết nối được Kafka
 
-**Triệu chứng:** Logs hiển thị "Cho Kafka khoi dong..."
+**Triệu chứng:** Nhật ký hiển thị "Cho Kafka khoi dong..."
 
 **Kiểm tra:**
 
@@ -536,33 +538,33 @@ docker-compose up -d --force-recreate <service-name>
 # 1. Kafka đã chạy chưa?
 docker ps | grep kafka
 
-# 2. Kafka có listen đúng port không?
+# 2. Kafka có lắng nghe đúng cổng không?
 docker exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092
 
-# 3. Network có thông không?
+# 3. Mạng có thông không?
 docker exec mqtt-bridge ping kafka  # Nếu cùng docker-compose
-ping <kafka-server-ip>              # Nếu khác máy
+ping <ip-may-chu-kafka>              # Nếu khác máy
 ```
 
 **Giải pháp:**
-- Đảm bảo `KAFKA_BROKER` trong env đúng format: `<ip>:<port>`
-- Kiểm tra firewall: `sudo ufw allow 9092/tcp`
-- Nếu chạy cùng máy, dùng Docker network: `kafka:29092`
+- Đảm bảo `KAFKA_BROKER` trong biến môi trường đúng định dạng: `<ip>:<cong>`
+- Kiểm tra tường lửa: `sudo ufw allow 9092/tcp`
+- Nếu chạy cùng máy, dùng mạng Docker: `kafka:29092`
 
-### 3. Spark Job không xử lý dữ liệu
+### 3. Công việc Spark không xử lý dữ liệu
 
-**Triệu chứng:** Dữ liệu vào Kafka nhưng không thấy output từ Spark
+**Triệu chứng:** Dữ liệu vào Kafka nhưng không thấy kết quả từ Spark
 
 **Kiểm tra:**
 
 ```bash
-# 1. Job có đang chạy không?
+# 1. Công việc có đang chạy không?
 docker exec spark-master /opt/spark/bin/spark-submit --status <driver-id>
 
-# 2. Xem Spark UI
-# Truy cập http://<server-ip>:9090, tab "Running Applications"
+# 2. Xem giao diện Spark
+# Truy cập http://<ip-may-chu>:9090, tab "Running Applications"
 
-# 3. Xem logs
+# 3. Xem nhật ký
 docker logs spark-master | grep ERROR
 docker logs spark-worker | grep ERROR
 ```
@@ -570,30 +572,30 @@ docker logs spark-worker | grep ERROR
 **Giải pháp:**
 
 ```bash
-# Kill job cũ và restart
+# Dừng công việc cũ và khởi động lại
 docker exec spark-master pkill -f spark-submit
 sleep 5
 
-# Submit lại
+# Gửi lại
 docker exec -d spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
   /app/spark_jobs/processor.py
 ```
 
-### 4. Permission denied khi Github Runner chạy
+### 4. Lỗi quyền khi Github Runner chạy
 
-**Triệu chứng:** CI/CD deploy thành công nhưng lần sau chạy bị lỗi permission
+**Triệu chứng:** Triển khai tự động thành công nhưng lần sau chạy bị lỗi quyền
 
 **Nguyên nhân:** Container tạo file với quyền root
 
 **Giải pháp:**
 
 ```bash
-# Fix quyền cho runner workspace
+# Sửa quyền cho không gian làm việc của runner
 sudo chown -R $USER:$USER ~/actions-runner/_work
 
-# Trong docker-compose, dùng named volumes thay vì bind mounts
+# Trong docker-compose, dùng ổ đĩa có tên thay vì gắn kết trực tiếp
 volumes:
   mosquitto_data:  # Thay vì ./mosquitto/data
 
@@ -603,26 +605,26 @@ services:
       - mosquitto_data:/mosquitto/data  # Thay vì ./mosquitto/data
 ```
 
-### 5. Container name conflict
+### 5. Xung đột tên container
 
 **Triệu chứng:** "The container name ... is already in use"
 
-**Nguyên nhân:** Docker Compose nhận diện sai project name
+**Nguyên nhân:** Docker Compose nhận diện sai tên dự án
 
 **Giải pháp:**
 
 ```bash
-# Set project name cố định
+# Đặt tên dự án cố định
 export COMPOSE_PROJECT_NAME=landslide_server
 
-# Hoặc dùng flag -p
+# Hoặc dùng cờ -p
 docker-compose -p landslide_server up -d
 
-# Clean up containers cũ
+# Dọn dẹp container cũ
 docker-compose down --remove-orphans
 ```
 
-### 6. Image pull bị lỗi 403 Forbidden
+### 6. Lỗi tải ảnh 403 Forbidden
 
 **Triệu chứng:** "denied: permission_denied: write_package"
 
@@ -635,28 +637,28 @@ docker-compose down --remove-orphans
 # Settings > Developer settings > Personal access tokens > Generate new token
 # Chọn scope: read:packages, write:packages
 
-# 2. Login vào GHCR
-echo $GITHUB_TOKEN | docker login ghcr.io -u <username> --password-stdin
+# 2. Đăng nhập vào GHCR
+echo $GITHUB_TOKEN | docker login ghcr.io -u <ten-nguoi-dung> --password-stdin
 
-# 3. Trong Github Actions, đảm bảo permissions đã set
+# 3. Trong Github Actions, đảm bảo permissions đã thiết lập
 permissions:
   packages: write
 ```
 
-### 7. Out of Memory
+### 7. Hết bộ nhớ
 
-**Triệu chứng:** Spark job bị kill, container restart liên tục
+**Triệu chứng:** Công việc Spark bị dừng, container khởi động lại liên tục
 
 **Giải pháp:**
 
 ```bash
-# 1. Giảm memory cho Spark Worker
-# Sửa docker-compose.yml
+# 1. Giảm bộ nhớ cho Spark Worker
+# Chỉnh sửa docker-compose.yml
 SPARK_WORKER_MEMORY=512m
 
-# 2. Giảm partition size trong Spark
-# Sửa processor.py
-df = df.coalesce(2)  # Giảm số partition
+# 2. Giảm kích thước phân vùng trong Spark
+# Chỉnh sửa processor.py
+df = df.coalesce(2)  # Giảm số phân vùng
 
 # 3. Tăng RAM cho Docker Desktop (nếu dùng macOS/Windows)
 # Docker Desktop > Settings > Resources > Memory: 4GB+
@@ -664,52 +666,52 @@ df = df.coalesce(2)  # Giảm số partition
 
 ---
 
-## Monitoring và Logging
+## Giám sát và nhật ký
 
-### 1. Xem logs real-time
+### 1. Xem nhật ký thời gian thực
 
 ```bash
-# Tất cả services
+# Tất cả dịch vụ
 docker-compose logs -f
 
-# Service cụ thể
+# Dịch vụ cụ thể
 docker-compose logs -f kafka
 
 # Số dòng cuối
 docker-compose logs --tail=100 spark-master
 ```
 
-### 2. Kiểm tra resource usage
+### 2. Kiểm tra sử dụng tài nguyên
 
 ```bash
-# CPU, Memory, Network I/O
+# CPU, bộ nhớ, I/O mạng
 docker stats
 
-# Disk usage
+# Sử dụng ổ đĩa
 docker system df
 ```
 
-### 3. Export logs ra file
+### 3. Xuất nhật ký ra file
 
 ```bash
-docker-compose logs > system-logs-$(date +%Y%m%d).log
+docker-compose logs > nhat-ky-he-thong-$(date +%Y%m%d).log
 ```
 
-### 4. Spark Monitoring
+### 4. Giám sát Spark
 
-- Master UI: `http://<server-ip>:9090`
-- Application UI: `http://<server-ip>:4040` (khi job đang chạy)
+- Giao diện Master: `http://<ip-may-chu>:9090`
+- Giao diện ứng dụng: `http://<ip-may-chu>:4040` (khi công việc đang chạy)
 
 ---
 
-## Docker Images
+## Các ảnh Docker
 
-Các Docker images được build tự động và lưu trữ tại Github Container Registry:
+Các ảnh Docker được xây dựng tự động và lưu trữ tại Github Container Registry:
 
-- **Gateway:** `ghcr.io/trandung6129/landslide-gateway:latest`
-- **Server:** `ghcr.io/trandung6129/landslide-server:latest`
+- **Cổng trung chuyển:** `ghcr.io/trandung6129/landslide-gateway:latest`
+- **Máy chủ:** `ghcr.io/trandung6129/landslide-server:latest`
 
-Để pull images thủ công:
+Để tải ảnh thủ công:
 
 ```bash
 docker pull ghcr.io/trandung6129/landslide-gateway:latest
@@ -718,57 +720,47 @@ docker pull ghcr.io/trandung6129/landslide-server:v1.0.5
 
 ---
 
-## Cấu trúc Dự án
+## Cấu trúc dự án
 
 ```
 landslide-monitoring/
 ├── .github/
 │   └── workflows/
-│       ├── ci-check.yml           # Continuous Integration
-│       └── ci-cd-pipeline.yml     # Build & Deploy pipeline
+│       ├── ci-check.yml           # Tích hợp liên tục
+│       └── ci-cd-pipeline.yml     # Quy trình xây dựng và triển khai
 ├── edge/
-│   ├── docker-compose.yml         # Edge node orchestration
-│   ├── Dockerfile                 # Sensor simulator image
-│   ├── requirements.txt           # Python dependencies
-│   ├── sensor_config.json         # Sensor configuration
-│   ├── rain_sim.py               # Rain sensor simulator
-│   ├── water_sim.py              # Water level simulator
-│   ├── imu_processing.py         # IMU data processor
-│   └── gnss_processing.py        # GNSS data processor
+│   ├── docker-compose.yml         # Điều phối nút biên
+│   ├── Dockerfile                 # Ảnh mô phỏng cảm biến
+│   ├── requirements.txt           # Thư viện Python
+│   ├── sensor_config.json         # Cấu hình cảm biến
+│   ├── rain_sim.py               # Mô phỏng cảm biến mưa
+│   ├── water_sim.py              # Mô phỏng mực nước
+│   ├── imu_processing.py         # Xử lý dữ liệu IMU
+│   └── gnss_processing.py        # Xử lý dữ liệu GNSS
 ├── gateway/
-│   ├── docker-compose.yml         # Gateway services
-│   ├── Dockerfile                 # Bridge service image
-│   ├── requirements.txt           # Python dependencies
-│   ├── mqtt_to_kafka.py          # MQTT to Kafka bridge
+│   ├── docker-compose.yml         # Dịch vụ cổng trung chuyển
+│   ├── Dockerfile                 # Ảnh dịch vụ cầu nối
+│   ├── requirements.txt           # Thư viện Python
+│   ├── mqtt_to_kafka.py          # Cầu nối MQTT sang Kafka
 │   └── mosquitto/
 │       └── config/
-│           └── mosquitto.conf    # MQTT broker config
+│           └── mosquitto.conf    # Cấu hình môi giới MQTT
 ├── server/
-│   ├── docker-compose.yml         # Server infrastructure
-│   ├── Dockerfile                 # Spark custom image
+│   ├── docker-compose.yml         # Hạ tầng máy chủ
+│   ├── Dockerfile                 # Ảnh Spark tùy chỉnh
 │   └── spark_jobs/
-│       └── processor.py          # Stream processing logic
+│       └── processor.py          # Logic xử lý luồng
 ├── .gitignore
 └── README.md
 ```
 
 ---
 
-## Tài liệu Tham khảo
-
-### Công nghệ sử dụng
-
-- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
-- [Apache Spark Structured Streaming](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
-- [Eclipse Mosquitto](https://mosquitto.org/documentation/)
-- [Docker Compose Reference](https://docs.docker.com/compose/compose-file/)
-- [Github Actions](https://docs.github.com/en/actions)
-
-### Chi tiết Cảm biến và Dữ liệu
+## Chi tiết cảm biến và dữ liệu
 
 Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc trưng dữ liệu khác nhau:
 
-#### 1. Rain Sensor (Cảm biến Mưa)
+### 1. Cảm biến mưa (Rain sensor)
 
 **Mục đích:** Đo lường cường độ mưa và lượng mưa tích lũy
 
@@ -786,7 +778,7 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
   - Giá trị không âm
   - Reset tích lũy sau mỗi chu kỳ (60s mặc định)
 
-**Ví dụ output:**
+**Ví dụ đầu ra:**
 ```json
 {
   "timestamp": "2024-01-15T10:30:45.123456",
@@ -804,7 +796,7 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
 }
 ```
 
-#### 2. Groundwater Sensor (Cảm biến Nước ngầm)
+### 2. Cảm biến nước ngầm (Groundwater sensor)
 
 **Mục đích:** Đo mực nước ngầm và áp lực nước lỗ rỗng trong đất
 
@@ -816,17 +808,17 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
 
 **Đặc trưng dữ liệu mô phỏng:**
 - **Miền giá trị:**
-  - Water level: 2.4 - 2.6 m (base ± 0.1m)
-  - Pore pressure: 23.5 - 25.5 kPa (base ± 1 kPa)
-- **Phân bố:** Uniform distribution trong khoảng biến thiên
+  - Mực nước: 2.4 - 2.6 m (cơ sở ± 0.1m)
+  - Áp lực lỗ rỗng: 23.5 - 25.5 kPa (cơ sở ± 1 kPa)
+- **Phân bố:** Phân bố đều trong khoảng biến thiên
 - **Quan hệ vật lý:** `P = ρgh`, với ρ=1000 kg/m³, g=9.81 m/s²
-  - P(kPa) ≈ 9.81 × water_level(m)
+  - P(kPa) ≈ 9.81 × mực_nước(m)
 - **Đặc điểm:**
   - Hai tham số có tương quan
-  - Biến thiên chậm (low-frequency change)
+  - Biến thiên chậm
   - Phản ánh tình trạng bão hòa của đất
 
-**Ví dụ output:**
+**Ví dụ đầu ra:**
 ```json
 {
   "timestamp": "2024-01-15T10:30:45.123456",
@@ -844,34 +836,34 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
 }
 ```
 
-#### 3. IMU Sensor (Inertial Measurement Unit)
+### 3. Cảm biến IMU (Inertial Measurement Unit)
 
 **Mục đích:** Đo gia tốc, vận tốc góc, góc nghiêng, và tính toán chuyển động
 
-**Tần suất:** 10 Hz (10 lần/giây) - High frequency
+**Tần suất:** 10 Hz (10 lần/giây) - Tần suất cao
 
 **Tham số đầu ra:**
 - `acceleration` (m/s²): Gia tốc theo 3 trục X, Y, Z + RMS
 - `angular_velocity` (rad/s): Vận tốc góc theo 3 trục
-- `tilt` (degrees): Góc nghiêng Roll, Pitch, Yaw
+- `tilt` (độ): Góc nghiêng Roll, Pitch, Yaw
 - `velocity` (m/s): Vận tốc tích phân từ gia tốc
 - `displacement` (m): Dịch chuyển tích phân từ vận tốc
 
 **Đặc trưng dữ liệu mô phỏng:**
 - **Miền giá trị:**
-  - Acceleration: -0.1 đến +0.1 m/s² (nhiễu quanh trọng trường -9.81 trên Z)
-  - Angular velocity: -0.01 đến +0.01 rad/s
-  - Tilt: -0.5 đến +0.5 degrees (dao động nhỏ)
-  - Velocity: Tích phân có damping (0.95) để tránh drift
-  - Displacement: mm scale (tích lũy chậm)
-- **Phân bố:** Gaussian white noise
+  - Gia tốc: -0.1 đến +0.1 m/s² (nhiễu quanh trọng trường -9.81 trên Z)
+  - Vận tốc góc: -0.01 đến +0.01 rad/s
+  - Góc nghiêng: -0.5 đến +0.5 độ (dao động nhỏ)
+  - Vận tốc: Tích phân có giảm chấn (0.95) để tránh trôi
+  - Dịch chuyển: Thang mm (tích lũy chậm)
+- **Phân bố:** Nhiễu trắng Gaussian
 - **Đặc điểm:**
-  - High-frequency data (10 Hz)
-  - Tích phân kép có damping factor
+  - Dữ liệu tần suất cao (10 Hz)
+  - Tích phân kép có hệ số giảm chấn
   - RMS được tính để phát hiện rung động
-  - Drift compensation với damping 0.95
+  - Bù trôi với giảm chấn 0.95
 
-**Ví dụ output:**
+**Ví dụ đầu ra:**
 ```json
 {
   "timestamp": "2024-01-15T10:30:45.123456",
@@ -909,7 +901,7 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
   "unit": {
     "acceleration": "m/s²",
     "angular_velocity": "rad/s",
-    "tilt": "degrees",
+    "tilt": "độ",
     "velocity": "m/s",
     "displacement": "m"
   }
@@ -917,20 +909,20 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
 ```
 
 **Công thức vật lý:**
-- Tilt Roll: `arctan2(ay, az) × 180/π`
-- Tilt Pitch: `arctan2(-ax, sqrt(ay² + az²)) × 180/π`
-- Velocity: `v(t) = v(t-1) + a×dt`
-- Displacement: `d(t) = d(t-1) + v×dt`
+- Góc Roll: `arctan2(ay, az) × 180/π`
+- Góc Pitch: `arctan2(-ax, sqrt(ay² + az²)) × 180/π`
+- Vận tốc: `v(t) = v(t-1) + a×dt`
+- Dịch chuyển: `d(t) = d(t-1) + v×dt`
 
-#### 4. GNSS Sensor (Global Navigation Satellite System)
+### 4. Cảm biến GNSS (Global Navigation Satellite System)
 
 **Mục đích:** Đo vị trí GPS chính xác và chuyển đổi sang hệ tọa độ VN-2000
 
 **Tần suất:** 1 Hz (1 lần/giây)
 
 **Tham số đầu ra:**
-- `latitude` (degrees): Vĩ độ WGS84
-- `longitude` (degrees): Kinh độ WGS84
+- `latitude` (độ): Vĩ độ WGS84
+- `longitude` (độ): Kinh độ WGS84
 - `vn2000.x` (m): Tọa độ Bắc (Northing) theo VN-2000
 - `vn2000.y` (m): Tọa độ Đông (Easting) theo VN-2000
 - `vn2000.z` (m): Độ cao ellipsoid
@@ -938,16 +930,16 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
 **Đặc trưng dữ liệu mô phỏng:**
 - **Vị trí cơ sở:** Hà Nội (21.0285°N, 105.8542°E)
 - **Miền giá trị:**
-  - Latitude: 21.0285 ± 0.00001° (~1.1m precision)
-  - Longitude: 105.8542 ± 0.00001° (~1.0m precision)
-  - Elevation: 10.0 - 10.5 m
-- **Phân bố:** Uniform random walk quanh điểm cơ sở
+  - Vĩ độ: 21.0285 ± 0.00001° (~1.1m độ chính xác)
+  - Kinh độ: 105.8542 ± 0.00001° (~1.0m độ chính xác)
+  - Độ cao: 10.0 - 10.5 m
+- **Phân bố:** Bước ngẫu nhiên đều quanh điểm cơ sở
 - **Đặc điểm:**
-  - Độ chính xác: ~1 meter (GPS consumer grade)
+  - Độ chính xác: ~1 mét (GPS cấp người dùng)
   - Chuyển đổi WGS84 → VN-2000 tự động
   - VN-2000 Y có False Easting +500,000m
 
-**Ví dụ output:**
+**Ví dụ đầu ra:**
 ```json
 {
   "timestamp": "2024-01-15T10:30:45.123456",
@@ -964,31 +956,31 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
     }
   },
   "unit": {
-    "latitude": "degrees",
-    "longitude": "degrees",
+    "latitude": "độ",
+    "longitude": "độ",
     "vn2000": "m"
   }
 }
 ```
 
-**Công thức chuyển đổi (Simplified):**
-- X (Northing): `lat_rad × a` (a = 6378137m - WGS84 semi-major axis)
-- Y (Easting): `(lon_rad - lon0_rad) × a × cos(lat_rad) + 500000`
-- Z (Elevation): Ellipsoid height (mô phỏng 10-10.5m)
+**Công thức chuyển đổi (Đơn giản hóa):**
+- X (Northing): `vĩ_độ_rad × a` (a = 6378137m - bán trục lớn WGS84)
+- Y (Easting): `(kinh_độ_rad - kinh_độ_gốc_rad) × a × cos(vĩ_độ_rad) + 500000`
+- Z (Độ cao): Độ cao ellipsoid (mô phỏng 10-10.5m)
 
-### Tóm tắt Đặc trưng Dữ liệu
+### Tóm tắt đặc trưng dữ liệu
 
 | Cảm biến | Tần suất | Kiểu dữ liệu | Đặc trưng chính | Ứng dụng |
 |----------|----------|--------------|-----------------|----------|
-| Rain | 1 Hz | Time-series, Accumulative | Tích lũy theo thời gian | Cảnh báo mưa lớn |
-| Groundwater | 1 Hz | Time-series, Correlated | Hai tham số có tương quan vật lý | Giám sát độ bão hòa đất |
-| IMU | 10 Hz | High-frequency, Multi-axis | 15 tham số, tích phân kép | Phát hiện chuyển động bất thường |
-| GNSS | 1 Hz | Spatial, Coordinate | Vị trí tuyệt đối 2D+1D | Đo dịch chuyển tuyệt đối |
+| Mưa | 1 Hz | Chuỗi thời gian, Tích lũy | Tích lũy theo thời gian | Cảnh báo mưa lớn |
+| Nước ngầm | 1 Hz | Chuỗi thời gian, Tương quan | Hai tham số có quan hệ vật lý | Giám sát độ bão hòa đất |
+| IMU | 10 Hz | Tần suất cao, Đa trục | 15 tham số, tích phân kép | Phát hiện chuyển động bất thường |
+| GNSS | 1 Hz | Không gian, Tọa độ | Vị trí tuyệt đối 2D+1D | Đo dịch chuyển tuyệt đối |
 
-### MQTT Topics Structure
+### Cấu trúc chủ đề MQTT
 
 ```
-sensors/{cluster_id}/{sensor_type}
+sensors/{id_cụm}/{loại_cảm_biến}
 
 Ví dụ:
 sensors/cluster_A/rain
@@ -998,16 +990,30 @@ sensors/cluster_B/groundwater
 ```
 
 **Quy tắc đặt tên:**
-- `cluster_id`: Định danh cụm cảm biến (theo vị trí địa lý)
-- `sensor_type`: Loại cảm biến (rain, groundwater, imu, gnss)
-- Mỗi sensor có `sensor_id` duy nhất trong message payload
+- `id_cụm`: Định danh cụm cảm biến (theo vị trí địa lý)
+- `loại_cảm_biến`: Loại cảm biến (rain, groundwater, imu, gnss)
+- Mỗi cảm biến có `sensor_id` duy nhất trong payload thông điệp
 
-### Kafka Topics
+---
 
-- `landslide_data`: Topic chứa tất cả dữ liệu từ sensors
-- Retention: 7 days (có thể cấu hình)
-- Partitions: 3 (có thể scale)
-- Replication factor: 1 (single broker)
+## Các chủ đề Kafka
+
+- `landslide_data`: Chủ đề chứa tất cả dữ liệu từ cảm biến
+- Thời gian lưu: 7 ngày (có thể cấu hình)
+- Số phân vùng: 3 (có thể mở rộng)
+- Hệ số sao chép: 1 (broker đơn)
+
+---
+
+## Tài liệu tham khảo
+
+### Công nghệ sử dụng
+
+- [Tài liệu Apache Kafka](https://kafka.apache.org/documentation/)
+- [Xử lý luồng có cấu trúc Apache Spark](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
+- [Eclipse Mosquitto](https://mosquitto.org/documentation/)
+- [Tham chiếu Docker Compose](https://docs.docker.com/compose/compose-file/)
+- [Github Actions](https://docs.github.com/en/actions)
 
 ---
 
@@ -1016,14 +1022,14 @@ sensors/cluster_B/groundwater
 Nếu bạn muốn đóng góp vào dự án:
 
 1. Fork repository
-2. Tạo branch mới: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
+2. Tạo branch mới: `git checkout -b feature/tinh-nang-moi`
+3. Commit thay đổi: `git commit -m 'Thêm tính năng mới'`
+4. Push lên branch: `git push origin feature/tinh-nang-moi`
 5. Tạo Pull Request
 
 ---
 
-## License
+## Giấy phép
 
 Dự án này được phát triển cho mục đích nghiên cứu khoa học.
 
@@ -1031,12 +1037,12 @@ Dự án này được phát triển cho mục đích nghiên cứu khoa học.
 
 ## Liên hệ
 
-- Developer: Tran Dung
-- Project: Landslide Early Warning System Research
+- Nhà phát triển: Trần Dũng
+- Dự án: Nghiên cứu hệ thống cảnh báo sớm sạt lở đất
 - Repository: https://github.com/TranDung6129/landslide-monitoring
 - Issues: https://github.com/TranDung6129/landslide-monitoring/issues
 
 Nếu gặp vấn đề kỹ thuật, vui lòng tạo issue trên Github với thông tin:
 - Hệ điều hành và phiên bản Docker
-- Logs liên quan
+- Nhật ký liên quan
 - Các bước tái hiện lỗi
