@@ -152,8 +152,24 @@ jobs:
             /app/spark_jobs/processor.py > /tmp/spark_job.log 2>&1 &"
           
           # Đợi job khởi động và xử lý dữ liệu (tăng lên 60s để có ít nhất 1 batch)
-          echo "Waiting 60s for Spark job to process data..."
-          sleep 60
+          echo "Waiting 30s for Spark job to initialize..."
+          sleep 30
+          
+          # Gửi dữ liệu mẫu vào Kafka để verify (phòng trường hợp sensor chưa kết nối)
+          echo "Sending test data to Kafka..."
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Gửi 5 message mẫu
+          for i in {1..5}; do
+             docker exec kafka kafka-console-producer --broker-list localhost:9092 --topic landslide_data <<EOF
+          {"timestamp": "${TIMESTAMP}", "sensor_id": "test_rain_$i", "sensor_type": "rain", "value": {"intensity": 25.5, "acceleration": {"z": 0.0}, "water_level": 0.0, "longitude": 0.0}}
+          {"timestamp": "${TIMESTAMP}", "sensor_id": "test_imu_$i", "sensor_type": "imu", "value": {"intensity": 0.0, "acceleration": {"z": 9.8}, "water_level": 0.0, "longitude": 0.0}}
+          EOF
+             sleep 2
+          done
+          
+          echo "Waiting another 30s for Spark to process test data..."
+          sleep 30
           
           # Lưu bảng dữ liệu ASCII từ Spark vào file
           # Lưu vào thư mục cố định trong home directory để dễ truy cập
