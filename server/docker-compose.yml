@@ -52,6 +52,10 @@ services:
     environment:
       - SPARK_CONF_DIR=/opt/spark/conf
       - SPARK_WORKER_CORES=1
-      - SPARK_WORKER_MEMORY=512m
+      - SPARK_WORKER_MEMORY=3g
+    deploy:
+      resources:
+        limits:
+          memory: 3.5G  # Giới hạn container để đảm bảo có đủ RAM
     restart: always
 

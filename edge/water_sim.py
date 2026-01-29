@@ -50,31 +50,49 @@ class GroundwaterSensor:
         
         # --- PHẦN 3: KẾT NỐI MQTT ---
         client_prefix = os.getenv('CLIENT_PREFIX', 'sim')
-        self.client = mqtt.Client(client_id=f"{client_prefix}_{self.sensor_id}")
+        # Sử dụng callback API version 2 để tránh deprecation warning
+        self.client = mqtt.Client(
+            client_id=f"{client_prefix}_{self.sensor_id}",
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+        )
         self.client.on_connect = self.on_connect
         self.client.on_publish = self.on_publish
         
-    def on_connect(self, client, userdata, flags, rc):
-        """Callback khi kết nối MQTT"""
-        if rc == 0:
+    def on_connect(self, client, userdata, flags, reason_code, properties=None):
+        """Callback khi kết nối MQTT (API version 2)"""
+        if reason_code == 0:
             print(f"[{self.sensor_id}] Connected to MQTT broker at {self.mqtt_broker}")
             print(f"[{self.sensor_id}] Target Topic: {self.topic}")
         else:
-            print(f"[{self.sensor_id}] Failed to connect, return code {rc}")
+            print(f"[{self.sensor_id}] Failed to connect, return code {reason_code}")
     
     def on_publish(self, client, userdata, mid):
         """Callback khi publish thành công"""
         pass
     
     def connect(self):
-        """Kết nối đến MQTT broker"""
-        try:
-            # Sử dụng biến từ Docker env
-            self.client.connect(self.mqtt_broker, self.mqtt_port, 60)
-            self.client.loop_start()
-        except Exception as e:
-            print(f"[{self.sensor_id}] Error connecting to MQTT: {e}")
-            raise
+        """Kết nối đến MQTT broker với retry logic"""
+        max_retries = 30  # Thử tối đa 30 lần
+        retry_delay = 2   # Bắt đầu với 2 giây
+        
+        for attempt in range(max_retries):
+            try:
+                # Sử dụng biến từ Docker env
+                self.client.connect(self.mqtt_broker, self.mqtt_port, 60)
+                self.client.loop_start()
+                # Đợi một chút để xác nhận kết nối thành công
+                time.sleep(1)
+                if self.client.is_connected():
+                    return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[{self.sensor_id}] Error connecting to MQTT (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"[{self.sensor_id}] Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 1.5, 30)  # Exponential backoff, max 30s
+                else:
+                    print(f"[{self.sensor_id}] Failed to connect to MQTT after {max_retries} attempts: {e}")
+                    raise
     
     def generate_water_level(self) -> float:
         """Tạo mực nước ngầm (m)"""
