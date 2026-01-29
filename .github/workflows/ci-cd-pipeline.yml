@@ -97,6 +97,34 @@ jobs:
             --master spark://spark-master:7077 \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
             /app/spark_jobs/processor.py
+          
+          # Đợi một chút để job khởi động và có dữ liệu
+          echo "Waiting for Spark job to process data..."
+          sleep 15
+          
+          # Lưu bảng dữ liệu ASCII từ Spark vào file
+          LOG_DIR="/tmp/spark_logs"
+          mkdir -p $LOG_DIR
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          LOG_FILE="$LOG_DIR/spark_data_${TIMESTAMP}.log"
+          
+          echo "Saving Spark processing data to file: $LOG_FILE"
+          {
+            echo "=========================================="
+            echo "Spark Processing Data (ASCII Table)"
+            echo "Timestamp: $(date)"
+            echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+            echo "=========================================="
+            echo ""
+            docker logs spark-master --tail 200 2>&1 | grep -E "(Batch|window|Avg_Acc_Z|Max_Rain|Max_Water|Last_GNSS|\+---|^\|)" | head -100 || docker logs spark-master --tail 100
+            echo ""
+            echo "=========================================="
+            echo "End of log"
+            echo "=========================================="
+          } > "$LOG_FILE"
+          
+          echo "✓ Spark data saved to: $LOG_FILE"
+          echo "File size: $(du -h $LOG_FILE | cut -f1)"
             
           # --- 2. GATEWAY (Nếu chạy chung server) ---
           echo "Deploying Gateway..."

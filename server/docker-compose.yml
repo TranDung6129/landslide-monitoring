@@ -56,6 +56,6 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3.5G  # Giới hạn container để đảm bảo có đủ RAM
+          memory: 3.5G 
     restart: always
 
