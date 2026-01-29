@@ -103,8 +103,9 @@ jobs:
           sleep 15
           
           # Lưu bảng dữ liệu ASCII từ Spark vào file
-          LOG_DIR="/tmp/spark_logs"
-          mkdir -p $LOG_DIR
+          # Lưu vào thư mục cố định trong home directory để dễ truy cập
+          LOG_DIR="$HOME/spark_logs"
+          mkdir -p "$LOG_DIR"
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
           LOG_FILE="$LOG_DIR/spark_data_${TIMESTAMP}.log"
           
@@ -123,8 +124,17 @@ jobs:
             echo "=========================================="
           } > "$LOG_FILE"
           
-          echo "✓ Spark data saved to: $LOG_FILE"
-          echo "File size: $(du -h $LOG_FILE | cut -f1)"
+          # Kiểm tra file đã được tạo chưa
+          if [ -f "$LOG_FILE" ]; then
+            echo "✓ Spark data saved to: $LOG_FILE"
+            echo "✓ File size: $(du -h "$LOG_FILE" | cut -f1)"
+            echo "✓ Full path: $(realpath "$LOG_FILE")"
+            ls -lh "$LOG_FILE"
+          else
+            echo "✗ ERROR: File was not created at $LOG_FILE"
+            echo "Current directory: $(pwd)"
+            echo "Log directory exists: $([ -d "$LOG_DIR" ] && echo 'Yes' || echo 'No')"
+          fi
             
           # --- 2. GATEWAY (Nếu chạy chung server) ---
           echo "Deploying Gateway..."
