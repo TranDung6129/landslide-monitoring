@@ -29,7 +29,8 @@ services:
 
   # --- PHẦN QUAN TRỌNG ĐÃ SỬA ---
   spark-master:
-    image: apache/spark:3.5.0
+    # Sử dụng image đã build chứa code Spark Job
+    image: ghcr.io/trandung6129/landslide-server:latest
     container_name: spark-master
     user: root # Chạy quyền root để tránh lỗi permission
     # Lệnh này ép Master chạy nền
@@ -42,7 +43,8 @@ services:
     restart: always
 
   spark-worker:
-    image: apache/spark:3.5.0
+    # Sử dụng image đã build chứa code Spark Job (để worker cũng có code nếu cần)
+    image: ghcr.io/trandung6129/landslide-server:latest
     container_name: spark-worker
     user: root
     depends_on:
