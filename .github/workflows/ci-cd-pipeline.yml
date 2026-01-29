@@ -54,43 +54,39 @@ jobs:
           docker push $IMAGE_NAME:latest
 
   # --- GIAI ĐOẠN 2: DEPLOY (Chạy trên Server thật) ---
-  deploy:
-    name: Deploy to Server
-    needs: build-and-push # <--- CHÌA KHÓA Ở ĐÂY: Phải chờ thằng trên xong mới được chạy
+  
+  # Job 1: Dọn dẹp môi trường (Chạy riêng biệt để đảm bảo sạch sẽ)
+  cleanup:
+    name: Cleanup Workspace
+    needs: build-and-push
     runs-on: self-hosted
     steps:
-      # Pre-cleanup: FORCE DELETE workspace to avoid permission issues
-      - name: Pre-cleanup - Remove Workspace
+      - name: Force Clean Workspace
         run: |
-          echo "=== Pre-cleanup: Force removing workspace ==="
-          WORKSPACE_PATH="${GITHUB_WORKSPACE:-$HOME/actions-runner/_work/landslide-monitoring/landslide-monitoring}"
-          echo "Workspace path: $WORKSPACE_PATH"
-          echo "Current user: $USER"
+          echo "Cleaning up workspace..."
+          # Đường dẫn cứng tới workspace để đảm bảo chính xác
+          # Thay đổi đường dẫn này nếu runner của bạn cài đặt ở chỗ khác
+          TARGET_DIR="$HOME/actions-runner/_work/landslide-monitoring/landslide-monitoring"
           
-          # Kiểm tra xem thư mục có tồn tại không
-          if [ -d "$WORKSPACE_PATH" ]; then
-            echo "Workspace exists, FORCE deleting entire workspace with sudo..."
-            # XÓA TOÀN BỘ workspace bằng sudo để tránh mọi vấn đề permission
-            sudo rm -rf "$WORKSPACE_PATH" || echo "Warning: rm -rf failed"
-            
-            # Tạo lại thư mục trống với owner đúng
-            mkdir -p "$WORKSPACE_PATH" || true
-            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || true
-            
-            echo "Workspace cleaned successfully"
+          if [ -d "$TARGET_DIR" ]; then
+            echo "Deleting directory: $TARGET_DIR"
+            sudo rm -rf "$TARGET_DIR"
           else
-            echo "Workspace does not exist yet, creating..."
-            mkdir -p "$WORKSPACE_PATH" || true
-            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || true
+            echo "Directory not found, nothing to clean."
           fi
           
-          echo "Pre-cleanup completed"
-        continue-on-error: true
-      
+          # Đảm bảo không còn process nào giữ file
+          sudo chown -R $USER:$USER "$HOME/actions-runner/_work/landslide-monitoring" || true
+
+  # Job 2: Deploy ứng dụng
+  deploy:
+    name: Deploy to Server
+    needs: cleanup # Chờ dọn dẹp xong mới chạy
+    runs-on: self-hosted
+    steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          clean: false  # Tắt clean vì pre-cleanup đã xử lý
+
 
       - name: Get Version
         id: get_version
