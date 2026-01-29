@@ -59,31 +59,32 @@ jobs:
     needs: build-and-push # <--- CHÌA KHÓA Ở ĐÂY: Phải chờ thằng trên xong mới được chạy
     runs-on: self-hosted
     steps:
-      # Pre-cleanup: Fix permissions BEFORE checkout
-      - name: Pre-cleanup - Fix Permissions
+      # Pre-cleanup: FORCE DELETE workspace to avoid permission issues
+      - name: Pre-cleanup - Remove Workspace
         run: |
-          echo "=== Pre-cleanup: Fixing permissions before checkout ==="
+          echo "=== Pre-cleanup: Force removing workspace ==="
           WORKSPACE_PATH="${GITHUB_WORKSPACE:-$HOME/actions-runner/_work/landslide-monitoring/landslide-monitoring}"
           echo "Workspace path: $WORKSPACE_PATH"
           echo "Current user: $USER"
           
           # Kiểm tra xem thư mục có tồn tại không
           if [ -d "$WORKSPACE_PATH" ]; then
-            echo "Workspace exists, fixing permissions..."
-            # Lấy lại quyền sở hữu toàn bộ thư mục
-            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || echo "Warning: chown failed"
+            echo "Workspace exists, FORCE deleting entire workspace with sudo..."
+            # XÓA TOÀN BỘ workspace bằng sudo để tránh mọi vấn đề permission
+            sudo rm -rf "$WORKSPACE_PATH" || echo "Warning: rm -rf failed"
             
-            # Xóa các file/thư mục gây lỗi permission
-            sudo rm -rf "$WORKSPACE_PATH/gateway/mosquitto/log" || echo "Warning: rm mosquitto/log failed"
-            sudo rm -rf "$WORKSPACE_PATH/server/spark_jobs/checkpoint" || echo "Warning: rm checkpoint failed"
+            # Tạo lại thư mục trống với owner đúng
+            mkdir -p "$WORKSPACE_PATH" || true
+            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || true
             
-            # Tạo lại thư mục log với quyền đúng
-            mkdir -p "$WORKSPACE_PATH/gateway/mosquitto/log" || true
-            
-            echo "Pre-cleanup completed"
+            echo "Workspace cleaned successfully"
           else
-            echo "Workspace does not exist yet, skipping cleanup"
+            echo "Workspace does not exist yet, creating..."
+            mkdir -p "$WORKSPACE_PATH" || true
+            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || true
           fi
+          
+          echo "Pre-cleanup completed"
         continue-on-error: true
       
       - name: Checkout Code
