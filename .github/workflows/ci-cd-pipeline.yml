@@ -100,7 +100,7 @@ jobs:
           
           # Đợi một chút để job khởi động và có dữ liệu
           echo "Waiting for Spark job to process data..."
-          sleep 15
+          sleep 30
           
           # Lưu bảng dữ liệu ASCII từ Spark vào file
           # Lưu vào thư mục cố định trong home directory để dễ truy cập
@@ -110,14 +110,48 @@ jobs:
           LOG_FILE="$LOG_DIR/spark_data_${TIMESTAMP}.log"
           
           echo "Saving Spark processing data to file: $LOG_FILE"
+          
+          # Tìm driver container của Spark job
+          DRIVER_CONTAINER=$(docker ps --filter "ancestor=apache/spark:3.5.0" --format "{{.Names}}" | grep -v "spark-master\|spark-worker" | head -1)
+          
           {
             echo "=========================================="
             echo "Spark Processing Data (ASCII Table)"
             echo "Timestamp: $(date)"
             echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+            echo "Driver Container: ${DRIVER_CONTAINER:-Not found}"
             echo "=========================================="
             echo ""
-            docker logs spark-master --tail 200 2>&1 | grep -E "(Batch|window|Avg_Acc_Z|Max_Rain|Max_Water|Last_GNSS|\+---|^\|)" | head -100 || docker logs spark-master --tail 100
+            
+            # Lấy log từ driver container nếu tìm thấy
+            if [ -n "$DRIVER_CONTAINER" ]; then
+              echo "--- Spark Driver Logs (from $DRIVER_CONTAINER) ---"
+              docker logs "$DRIVER_CONTAINER" --tail 1000 2>&1
+              echo ""
+            fi
+            
+            echo "--- Spark Master Logs (last 500 lines) ---"
+            docker logs spark-master --tail 500 2>&1
+            echo ""
+            
+            echo "--- Spark Worker Logs (last 500 lines) ---"
+            docker logs spark-worker --tail 500 2>&1 || echo "Worker logs not available"
+            echo ""
+            
+            echo "--- Extracted Console Output (Batch/Table data) ---"
+            # Tìm log chứa bảng ASCII từ tất cả containers
+            ALL_LOGS=""
+            if [ -n "$DRIVER_CONTAINER" ]; then
+              ALL_LOGS=$(docker logs "$DRIVER_CONTAINER" --tail 2000 2>&1)
+            fi
+            ALL_LOGS="$ALL_LOGS"$'\n'"$(docker logs spark-master --tail 1000 2>&1)"
+            ALL_LOGS="$ALL_LOGS"$'\n'"$(docker logs spark-worker --tail 1000 2>&1 2>/dev/null || echo '')"
+            
+            # Tìm và hiển thị bảng ASCII
+            echo "$ALL_LOGS" | grep -A 20 -E "(Batch \d+|^\+\-|^\|.*window|^\|.*Avg_Acc_Z|^\|.*Max_Rain)" | head -300 || \
+            echo "$ALL_LOGS" | grep -E "(Batch|window|Avg_Acc_Z|Max_Rain|Max_Water|Last_GNSS|\+---|^\|)" | head -200 || \
+            echo "No table data found. Full logs saved above."
+            
             echo ""
             echo "=========================================="
             echo "End of log"
