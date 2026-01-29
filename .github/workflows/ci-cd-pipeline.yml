@@ -59,6 +59,17 @@ jobs:
     needs: build-and-push # <--- CHÌA KHÓA Ở ĐÂY: Phải chờ thằng trên xong mới được chạy
     runs-on: self-hosted
     steps:
+      # Pre-cleanup: Fix permissions BEFORE checkout
+      - name: Pre-cleanup - Fix Permissions
+        run: |
+          echo "Fixing permissions before checkout..."
+          # Lấy lại quyền sở hữu thư mục workspace để git có thể clean
+          sudo chown -R $USER:$USER $GITHUB_WORKSPACE || true
+          # Xóa các file log gây lỗi permission
+          sudo rm -rf $GITHUB_WORKSPACE/gateway/mosquitto/log/*.log || true
+          sudo rm -rf $GITHUB_WORKSPACE/server/spark_jobs/checkpoint || true
+        continue-on-error: true
+      
       - name: Checkout Code
         uses: actions/checkout@v4
 

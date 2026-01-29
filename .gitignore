@@ -15,10 +15,14 @@ env/
 # Bỏ qua dữ liệu persistence của Mosquitto
 gateway/mosquitto/data/*
 !gateway/mosquitto/data/.gitkeep
+gateway/mosquitto/log/
 gateway/mosquitto/log/*
 
 # Bỏ qua Checkpoint của Spark (Checkpoint được Spark tự động tạo)
+server/spark_jobs/checkpoint/
 server/spark_jobs/checkpoints/
+server/spark_jobs/checkpoint/*
+server/spark_jobs/checkpoints/*
 
 # --- 4. Logs & Debug ---
 *.log
