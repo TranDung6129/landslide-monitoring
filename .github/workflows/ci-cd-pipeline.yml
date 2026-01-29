@@ -131,6 +131,14 @@ jobs:
           echo "Checking container status:"
           docker-compose ps
           
+          # Đợi Kafka khởi động
+          echo "Waiting for Kafka to be ready..."
+          sleep 15
+          
+          # Tạo topic 'landslide_data' (nếu chưa có)
+          echo "Creating Kafka topic 'landslide_data'..."
+          docker exec kafka kafka-topics --create --if-not-exists --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1 --topic landslide_data || echo "Topic creation failed (might already exist or Kafka not ready)"
+          
           # Restart Spark
           echo "Restarting Spark..."
           docker restart spark-master
