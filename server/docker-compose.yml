@@ -41,6 +41,8 @@ services:
     ports:
       - "9090:8080" # Web UI
       - "7077:7077" # Cổng kết nối nội bộ
+    volumes:
+      - ./spark_jobs:/app/spark_jobs  # Mount Spark jobs vào container
     environment:
       - SPARK_CONF_DIR=/opt/spark/conf
     networks:

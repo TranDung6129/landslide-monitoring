@@ -14,6 +14,7 @@ Dự án được đóng gói hoàn toàn bằng Docker và tích hợp tự đ�
   - [1. Triển khai máy chủ trung tâm](#1-triển-khai-máy-chủ-trung-tâm)
   - [2. Triển khai cổng trung chuyển](#2-triển-khai-cổng-trung-chuyển)
   - [3. Triển khai nút biên](#3-triển-khai-nút-biên)
+- [CI/CD Deployment](#cicd-deployment) 🆕
 - [Quy trình phát triển](#quy-trình-phát-triển)
 - [Cấu hình nâng cao](#cấu-hình-nâng-cao)
 - [Khắc phục sự cố](#khắc-phục-sự-cố)
@@ -309,6 +310,165 @@ docker exec -it kafka kafka-console-consumer \
   --bootstrap-server localhost:9092 \
   --topic landslide_data \
   --from-beginning
+```
+
+---
+
+## CI/CD Deployment
+
+### 🚀 Triển Khai Tự Động (Khuyến Nghị)
+
+Hệ thống đã được tích hợp CI/CD pipeline hoàn chỉnh sử dụng GitHub Actions.
+
+#### Điều Kiện Tiên Quyết
+
+**1. Cấu Hình Server:**
+```bash
+# Thêm quyền sudo cho GitHub Actions runner
+echo "dungtm ALL=(ALL) NOPASSWD: /bin/rm, /bin/chown" | sudo tee /etc/sudoers.d/github-runner
+sudo chmod 440 /etc/sudoers.d/github-runner
+```
+
+**2. Cài Đặt Self-Hosted Runner:**
+- Truy cập: Repository → Settings → Actions → Runners → New self-hosted runner
+- Làm theo hướng dẫn để cài đặt runner trên server
+
+#### Quy Trình Deploy
+
+**Bước 1: Tag và Push Code**
+```bash
+git add .
+git commit -m "Your feature description"
+git tag v1.0.32  # Tăng version number
+git push origin main
+git push origin v1.0.32
+```
+
+**Bước 2: Tự Động Deploy**
+Pipeline sẽ tự động chạy với các bước:
+
+1. **Cleanup** (30s)
+   - Xóa containers cũ
+   - Tạo shared Docker network `landslide_network`
+   - Fix permissions
+
+2. **Deploy Gateway** (20s)
+   - Deploy mosquitto + mqtt-bridge
+   - Kiểm tra connectivity
+
+3. **Deploy Server** (30s)
+   - Deploy kafka, zookeeper, spark-master, spark-worker
+   - Mount Spark jobs volume
+
+4. **Start Spark Job** (60s)
+   - Submit Spark streaming job
+   - Redirect output to `/app/spark_jobs/spark_output.log`
+
+5. **Wait for Data Flow** (5 minutes)
+   - Đợi data flow qua pipeline: Edge → MQTT → Kafka → Spark
+   - Monitor batch processing progress
+
+6. **Collect Logs** (30s)
+   - Lưu logs vào `~/spark_logs/spark_deployment_[timestamp].log`
+   - Extract batch processing data (ASCII tables)
+
+**Tổng thời gian:** ~7-8 phút
+
+#### Kiểm Tra Kết Quả
+
+**1. Container Status:**
+```bash
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+Expect 6 containers: `mosquitto`, `mqtt-bridge`, `kafka`, `zookeeper`, `spark-master`, `spark-worker`
+
+**2. Network Connectivity:**
+```bash
+docker network inspect landslide_network | grep Name
+```
+
+All containers phải trong cùng network.
+
+**3. MQTT Bridge → Kafka:**
+```bash
+docker logs mqtt-bridge --tail 20
+```
+
+Expect: `>>> Bridge: Da ket noi Kafka thanh cong!`
+
+**4. Spark Batch Data:**
+```bash
+docker exec spark-master cat /app/spark_jobs/spark_output.log | grep -A 10 "Batch:"
+```
+
+Expect ASCII tables với windowed aggregations:
+```
+-------------------------------------------
+Batch: 0
+-------------------------------------------
++------------------------------------------+---------+--------+---------------+---------+
+|window                                    |Avg_Acc_Z|Max_Rain|Max_Water_Level|Last_GNSS|
++------------------------------------------+---------+--------+---------------+---------+
+|{2026-01-30 09:00:00, 2026-01-30 09:00:10}|-9.8123  |4.2     |2.45           |105.8542 |
++------------------------------------------+---------+--------+---------------+---------+
+```
+
+**5. Deployment Log:**
+```bash
+ls -lt ~/spark_logs/ | head -2
+cat ~/spark_logs/spark_deployment_*.log | less
+```
+
+### 🔧 Các Vấn Đề Đã Khắc Phục
+
+#### 1. Network Isolation
+**Vấn đề:** MQTT Bridge không kết nối được Kafka  
+**Giải pháp:** Tạo shared Docker network `landslide_network` cho tất cả containers
+
+#### 2. Permission Errors  
+**Vấn đề:** GitHub Actions không thể xóa files do Docker tạo  
+**Giải pháp:** Cấu hình sudo NOPASSWD cho `rm` và `chown`
+
+#### 3. Missing Spark Jobs
+**Vấn đề:** `processor.py` không tồn tại trong container  
+**Giải pháp:** Mount volume `./spark_jobs:/app/spark_jobs` vào spark-master
+
+#### 4. Batch Data Not Visible
+**Vấn đề:** Console output bị mất khi dùng `docker exec -d`  
+**Giải pháp:** Redirect output vào file: `> /app/spark_jobs/spark_output.log 2>&1`
+
+**Chi tiết đầy đủ:** Xem [`DEPLOYMENT_FIXES.md`](./DEPLOYMENT_FIXES.md)
+
+### 🔍 Troubleshooting
+
+**Không thấy batch data?**
+```bash
+# Check Spark job
+docker exec spark-master ps aux | grep processor.py
+
+# Check output file
+docker exec spark-master tail -f /app/spark_jobs/spark_output.log
+
+# Check Kafka messages
+docker exec kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic landslide_data \
+  --from-beginning \
+  --max-messages 5
+```
+
+**MQTT Bridge không connect?**
+```bash
+docker logs mqtt-bridge | grep -i kafka
+docker network inspect landslide_network | grep mqtt-bridge
+```
+
+**Container conflicts?**
+```bash
+# Manual cleanup
+docker rm -f mosquitto mqtt-bridge kafka spark-master spark-worker zookeeper
+docker network rm landslide_network
 ```
 
 ---

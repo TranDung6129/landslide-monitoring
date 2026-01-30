@@ -222,15 +222,23 @@ jobs:
           echo "Checking MQTT Bridge connection..."
           docker logs mqtt-bridge --tail 20 2>&1 | grep -i "kafka" || echo "MQTT Bridge logs not showing Kafka yet"
           
-          # Chạy Spark job trong background
+          # Xóa checkpoint cũ và output file cũ (tránh conflict)
           echo ""
-          echo "Submitting Spark job..."
-          docker exec -d spark-master /opt/spark/bin/spark-submit \
+          echo "Cleaning old Spark checkpoints and outputs..."
+          docker exec spark-master rm -rf /app/spark_jobs/checkpoint 2>/dev/null || true
+          docker exec spark-master rm -f /app/spark_jobs/spark_output.log 2>/dev/null || true
+          
+          # Chạy Spark job với output redirect vào file
+          echo ""
+          echo "Submitting Spark job with output redirection..."
+          docker exec spark-master bash -c "nohup /opt/spark/bin/spark-submit \
             --master spark://spark-master:7077 \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
-            /app/spark_jobs/processor.py
+            /app/spark_jobs/processor.py \
+            > /app/spark_jobs/spark_output.log 2>&1 &"
           
           echo "Spark job submitted successfully!"
+          echo "Output will be saved to: /app/spark_jobs/spark_output.log"
           echo ""
           
           # --- BƯỚC 5: ĐỢI DATA FLOW QUA HỆ THỐNG (5 PHÚT) ---
@@ -244,11 +252,20 @@ jobs:
           WAIT_TIME=300
           echo "Waiting ${WAIT_TIME} seconds (5 minutes) for data to flow through the system..."
           
-          # Hiển thị progress mỗi 30 giây
+          # Hiển thị progress mỗi 30 giây và preview batch data
           for i in {1..10}; do
             ELAPSED=$((i * 30))
             REMAINING=$((WAIT_TIME - ELAPSED))
             echo "  [$(date +%H:%M:%S)] Progress: ${ELAPSED}s / ${WAIT_TIME}s (${REMAINING}s remaining...)"
+            
+            # Sau 60 giây, bắt đầu check xem có batch data chưa
+            if [ $ELAPSED -ge 60 ]; then
+              BATCH_COUNT=$(docker exec spark-master grep -c "Batch:" /app/spark_jobs/spark_output.log 2>/dev/null || echo "0")
+              if [ "$BATCH_COUNT" != "0" ]; then
+                echo "    -> Found $BATCH_COUNT batch(es) processed so far!"
+              fi
+            fi
+            
             sleep 30
           done
           
@@ -334,27 +351,42 @@ jobs:
             echo "=========================================="
             echo "SPARK BATCH PROCESSING DATA (ASCII TABLES)"
             echo "=========================================="
-            echo "Searching for batch processing results..."
+            echo "Reading batch processing results from output file..."
             echo ""
             
-            # Thu thập tất cả logs từ Spark Master (nhiều hơn)
-            ALL_SPARK_LOGS=$(docker logs spark-master --tail 2000 2>&1)
-            
-            # Tìm tất cả batch data với pattern cụ thể
-            BATCH_DATA=$(echo "$ALL_SPARK_LOGS" | grep -B 3 -A 10 -E "^Batch:|^\+\-|window.*Avg_Acc_Z" | head -500)
-            
-            if [ -n "$BATCH_DATA" ]; then
-              echo "Found batch processing data:"
-              echo "$BATCH_DATA"
-            else
-              echo "WARNING: No batch data found in Spark Master logs."
-              echo "Possible reasons:"
-              echo "  1. No data from edge sensors yet"
-              echo "  2. MQTT Bridge not connected to Kafka"
-              echo "  3. Spark job not reading from Kafka correctly"
+            # Đọc batch data từ spark_output.log
+            if docker exec spark-master test -f /app/spark_jobs/spark_output.log; then
+              echo "Output file found! Extracting batch data..."
               echo ""
-              echo "Checking for any table-like output:"
-              echo "$ALL_SPARK_LOGS" | grep -E "^\|.*\|" | head -50 || echo "No table output found"
+              
+              # Lấy tất cả batch data
+              BATCH_DATA=$(docker exec spark-master cat /app/spark_jobs/spark_output.log 2>&1 | grep -B 3 -A 10 "Batch:" | head -1000)
+              
+              if [ -n "$BATCH_DATA" ]; then
+                echo "SUCCESS! Found batch processing data:"
+                echo "---"
+                echo "$BATCH_DATA"
+                echo "---"
+                
+                # Đếm số batch đã xử lý
+                BATCH_COUNT=$(docker exec spark-master grep -c "Batch:" /app/spark_jobs/spark_output.log 2>/dev/null || echo "0")
+                echo ""
+                echo "Total batches processed: $BATCH_COUNT"
+              else
+                echo "WARNING: Output file exists but no batch data found yet."
+                echo "Job may still be initializing. Showing last 50 lines:"
+                echo "---"
+                docker exec spark-master tail -50 /app/spark_jobs/spark_output.log 2>&1
+                echo "---"
+              fi
+            else
+              echo "WARNING: Spark output file not found at /app/spark_jobs/spark_output.log"
+              echo "Possible reasons:"
+              echo "  1. Spark job failed to start"
+              echo "  2. Output redirection failed"
+              echo ""
+              echo "Checking Spark Master logs for errors:"
+              docker logs spark-master --tail 100 2>&1 | grep -i "error\|exception" | head -20 || echo "No errors found"
             fi
             
             echo ""
