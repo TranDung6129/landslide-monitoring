@@ -59,6 +59,31 @@ jobs:
     needs: build-and-push # <--- CHÌA KHÓA Ở ĐÂY: Phải chờ thằng trên xong mới được chạy
     runs-on: self-hosted
     steps:
+      - name: Clean Workspace (Fix Permission Issues)
+        run: |
+          echo "Cleaning workspace to fix permission issues..."
+          WORKSPACE_DIR="${GITHUB_WORKSPACE:-$HOME/actions-runner/_work/landslide-monitoring/landslide-monitoring}"
+          
+          if [ -d "$WORKSPACE_DIR" ]; then
+            echo "Workspace exists at: $WORKSPACE_DIR"
+            echo "Removing files created by Docker containers (may require sudo)..."
+            
+            # Xóa các file log và data được tạo bởi containers
+            sudo rm -rf "$WORKSPACE_DIR/gateway/mosquitto/log" 2>/dev/null || true
+            sudo rm -rf "$WORKSPACE_DIR/gateway/mosquitto/data" 2>/dev/null || true
+            sudo rm -rf "$WORKSPACE_DIR/server/spark/checkpoint" 2>/dev/null || true
+            sudo rm -rf "$WORKSPACE_DIR/server/kafka/data" 2>/dev/null || true
+            sudo rm -rf "$WORKSPACE_DIR/server/zookeeper/data" 2>/dev/null || true
+            
+            # Thay đổi ownership của toàn bộ workspace về user hiện tại
+            echo "Changing ownership to current user..."
+            sudo chown -R $(whoami):$(whoami) "$WORKSPACE_DIR" 2>/dev/null || true
+            
+            echo "Workspace cleanup completed!"
+          else
+            echo "Workspace does not exist yet, skipping cleanup."
+          fi
+      
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -266,4 +291,18 @@ jobs:
           docker ps --format "  - {{.Names}} ({{.Status}})" | grep -E "(mosquitto|mqtt|kafka|spark|zookeeper)"
           echo ""
           echo "Deployment successful!"
+      
+      - name: Fix Permissions for Next Run
+        if: always()
+        run: |
+          echo "Fixing file permissions for next deployment..."
+          
+          # Đặt lại ownership cho các thư mục được tạo bởi containers
+          # Điều này đảm bảo lần deploy sau không gặp permission issues
+          sudo chown -R $(whoami):$(whoami) gateway/mosquitto 2>/dev/null || true
+          sudo chown -R $(whoami):$(whoami) server/spark/checkpoint 2>/dev/null || true
+          sudo chown -R $(whoami):$(whoami) server/kafka 2>/dev/null || true
+          sudo chown -R $(whoami):$(whoami) server/zookeeper 2>/dev/null || true
+          
+          echo "Permission fix completed!"
 
