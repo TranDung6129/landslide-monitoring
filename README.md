@@ -53,6 +53,34 @@ Hệ thống được thiết kế theo mô hình vi dịch vụ (microservices)
   - Apache Spark: Công cụ xử lý luồng phân tán
 - Thiết bị đề xuất: Máy chủ đám mây (AWS EC2, DigitalOcean), máy trạm
 
+### Mô hình dự đoán sạt lở (Fukuzono Model)
+
+Hệ thống sử dụng **Fukuzono Model** để dự đoán thời điểm sạt lở dựa trên phân tích nghịch đảo vận tốc (inverse velocity).
+
+**Nguyên lý:**
+- Khi khối đất sắp trượt, vận tốc dịch chuyển tăng dần
+- Đồ thị `1/v` theo thời gian có xu hướng tiến về 0
+- Khi `1/v < 10` → Nguy cơ sạt lở cấp bách
+
+**Tần số thu thập dữ liệu:**
+- **IMU (Gia tốc kế):** 200 Hz - Đo gia tốc, vận tốc dịch chuyển
+- **GNSS/GPS:** 10 Hz - Đo tọa độ vị trí chính xác
+- **Cảm biến mưa:** 1 Hz - Đo cường độ và lượng mưa tích lũy
+- **Mực nước ngầm:** 1 Hz - Đo áp lực nước lỗ rỗng
+
+**Xử lý dữ liệu (Data Resampling):**
+```python
+# Spark Streaming đồng bộ dữ liệu về cửa sổ 1 giây
+- IMU (200 mẫu/s)  → Trung bình (avg) để giảm nhiễu
+- GNSS (10 mẫu/s)  → Lấy giá trị cuối (last interpolation)
+- Rain (1 mẫu/s)   → Lấy giá trị max
+```
+
+**Cảnh báo tự động:**
+- 🔴 **DANGER**: `inv_velocity < 10` → Sạt lở sắp xảy ra
+- 🟡 **WARNING**: `rain > 50 mm/h` → Mưa lớn, theo dõi
+- 🟢 **NORMAL**: Điều kiện bình thường
+
 ### Kiến trúc mạng
 
 ```
@@ -276,7 +304,19 @@ CLUSTER_ID=cluster_A           # Định danh cụm cảm biến
 
 **Bước 3: Cấu hình thông số cảm biến**
 
-Chỉnh sửa file `sensor_config.json` để điều chỉnh thông số mô phỏng (tần suất gửi, ngưỡng giá trị, v.v.)
+Chỉnh sửa file `sensor_config.json` để điều chỉnh thông số mô phỏng:
+
+```json
+{
+  "imu": { "frequency": 200.0 },      // 200 Hz - Tốc độ cao để bắt chuyển động nhanh
+  "gnss": { "frequency": 10.0 },      // 10 Hz - Độ chính xác vị trí cao
+  "rain": { "frequency": 1.0 },       // 1 Hz - Đủ để theo dõi mưa
+  "groundwater": { "frequency": 1.0 } // 1 Hz - Áp lực thay đổi chậm
+}
+```
+
+> **Lưu ý:** Tần số cao (IMU 200Hz, GNSS 10Hz) là cần thiết cho mô hình Fukuzono Model. 
+> Spark Streaming sẽ tự động resampling về cửa sổ 1 giây để xử lý.
 
 **Bước 4: Khởi động các bộ mô phỏng cảm biến**
 

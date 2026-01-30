@@ -245,7 +245,7 @@ jobs:
           echo "=========================================="
           echo "STEP 5: Waiting for Data Flow (5 minutes)..."
           echo "=========================================="
-          echo "Pipeline: Edge -> MQTT -> Kafka -> Spark -> Batch Processing"
+          echo "Pipeline: Edge (IMU 200Hz + GNSS 10Hz) -> MQTT -> Kafka -> Spark -> Fukuzono Model"
           echo ""
           
           # Đợi 5 phút để data flow qua toàn bộ pipeline
@@ -349,9 +349,10 @@ jobs:
             echo ""
             
             echo "=========================================="
-            echo "SPARK BATCH PROCESSING DATA (ASCII TABLES)"
+            echo "SPARK BATCH PROCESSING DATA (FUKUZONO MODEL)"
             echo "=========================================="
-            echo "Reading batch processing results from output file..."
+            echo "Reading Fukuzono analysis results from output file..."
+            echo "Expected columns: time | alert_level | inv_velocity | avg_velocity | last_gnss_x | rain_intensity"
             echo ""
             
             # Đọc batch data từ spark_output.log

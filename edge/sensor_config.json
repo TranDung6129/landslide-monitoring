@@ -19,21 +19,17 @@
     }
   },
   "imu": {
-    "frequency": 10.0,
+    "frequency": 200.0, 
     "unit": "m/s²",
     "simulation": {
-      "base_acceleration": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": -9.81
-      },
+      "base_acceleration": { "x": 0.0, "y": 0.0, "z": -9.81 },
       "acceleration_noise": 0.1,
       "angular_velocity_noise": 0.01,
       "tilt_noise": 0.5
     }
   },
   "gnss": {
-    "frequency": 1.0,
+    "frequency": 10.0,
     "unit": "degrees",
     "simulation": {
       "base_latitude": 21.0285,

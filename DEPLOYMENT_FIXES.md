@@ -425,6 +425,67 @@ docker exec spark-master grep -c "Batch:" /app/spark_jobs/spark_output.log
 
 ---
 
+## 🔬 Fukuzono Model & Data Resampling
+
+### Tổng Quan
+Hệ thống tích hợp **Fukuzono Model** để dự đoán sạt lở dựa trên phân tích nghịch đảo vận tốc (1/v).
+
+### Sensor Configuration
+**Tần số thu thập dữ liệu (Edge Layer):**
+```json
+{
+  "imu": { "frequency": 200.0 },      // 200 Hz - Đo gia tốc, vận tốc
+  "gnss": { "frequency": 10.0 },      // 10 Hz - Đo dịch chuyển vị trí
+  "rain": { "frequency": 1.0 },       // 1 Hz - Đo cường độ mưa
+  "groundwater": { "frequency": 1.0 } // 1 Hz - Đo áp lực nước lỗ rỗng
+}
+```
+
+### Data Processing Pipeline
+1. **Resampling (1-second window):**
+   - IMU (200 samples/s) → Trung bình (avg) để giảm nhiễu
+   - GNSS (10 samples/s) → Lấy giá trị cuối (last) để nội suy
+   - Rain/Groundwater (1 sample/s) → Lấy giá trị max
+
+2. **Feature Engineering:**
+   ```python
+   # Tính vận tốc tổng hợp từ IMU
+   v = sqrt(vx^2 + vy^2)
+   
+   # Tính nghịch đảo vận tốc (Fukuzono indicator)
+   inv_velocity = 1 / v
+   ```
+
+3. **Alert Logic:**
+   - **DANGER**: `inv_velocity < 10` (v > 0.1 m/s) → Sạt lở sắp xảy ra
+   - **WARNING**: `rain_intensity > 50 mm/h` → Mưa lớn
+   - **NORMAL**: Các trường hợp còn lại
+
+### Expected Output Format
+```
++-------------------+--------------------------+------------+-------------+-----------+--------------+
+|time               |alert_level               |inv_velocity|avg_velocity |last_gnss_x|rain_intensity|
++-------------------+--------------------------+------------+-------------+-----------+--------------+
+|2026-01-30 10:00:01|NORMAL                    |950.23      |0.00105      |2325678.12 |0.0           |
+|2026-01-30 10:00:02|WARNING: HEAVY RAIN       |948.11      |0.00106      |2325678.15 |52.3          |
+|2026-01-30 10:00:03|DANGER: LANDSLIDE IMMINENT|8.45        |0.11834      |2325678.89 |65.1          |
++-------------------+--------------------------+------------+-------------+-----------+--------------+
+```
+
+### Verification Steps
+```bash
+# 1. Kiểm tra Spark job đang chạy Fukuzono model
+docker logs spark-master --tail 50 | grep "Landslide_Fukuzono_System"
+
+# 2. Đọc batch processing results
+docker exec spark-master cat /app/spark_jobs/spark_output.log | grep -A 10 "Batch:"
+
+# 3. Kiểm tra số lượng batch đã xử lý
+docker exec spark-master grep -c "Batch:" /app/spark_jobs/spark_output.log
+```
+
+---
+
 ## 🎯 Best Practices
 
 1. **Always use tags:** `v1.0.x` format
@@ -433,6 +494,7 @@ docker exec spark-master grep -c "Batch:" /app/spark_jobs/spark_output.log
 4. **Use shared network:** Ensure all services communicate
 5. **Redirect Spark output:** Never use detached mode without logging
 6. **Wait for data flow:** 5 minutes minimum for meaningful batch data
+7. **Clean checkpoint on schema change:** `rm -rf spark_jobs/checkpoint` khi sửa processor.py
 
 ---
 
