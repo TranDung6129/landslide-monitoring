@@ -11,6 +11,8 @@ services:
       - ./mosquitto/config:/mosquitto/config:ro
       - ./mosquitto/log:/mosquitto/log
       - mosquitto_data:/mosquitto/data
+    networks:
+      - landslide_network
     restart: always
 
   mqtt-bridge:
@@ -27,7 +29,14 @@ services:
       # Nếu Gateway chạy khác máy với Server, hãy điền IP thật của Server vào đây
       # Ví dụ: 192.168.1.100:9092 thay vì kafka:29092
       - KAFKA_BROKER=${KAFKA_ADDR:-kafka:29092}
+    networks:
+      - landslide_network
     restart: always
 
 volumes:
   mosquitto_data:
+
+networks:
+  landslide_network:
+    external: true
+    name: landslide_network

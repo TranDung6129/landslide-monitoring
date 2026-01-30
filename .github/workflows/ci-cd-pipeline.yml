@@ -120,11 +120,19 @@ jobs:
             fi
           done
           
-          # Xóa cả network cũ nếu có
+          # Xóa network cũ nếu có
           docker network rm landslide_network 2>/dev/null || echo "Network already removed or not found"
           
+          # Tạo shared network mới để gateway và server giao tiếp được
           echo ""
-          echo "✓ Cleanup completed!"
+          echo "Creating shared Docker network..."
+          docker network create landslide_network || echo "Network already exists (will use existing)"
+          
+          # Kiểm tra network đã tạo
+          docker network ls | grep landslide_network
+          
+          echo ""
+          echo "Cleanup completed!"
           echo ""
           
           # --- BƯỚC 2: DEPLOY GATEWAY (MOSQUITTO + MQTT-BRIDGE) ---

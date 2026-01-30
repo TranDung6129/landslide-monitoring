@@ -7,6 +7,8 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - landslide_network
     restart: always
 
   kafka:
@@ -25,6 +27,8 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       # KAFKA_HEAP_OPTS: "-Xmx400M -Xms400M"
+    networks:
+      - landslide_network
     restart: always
 
   # --- PHẦN QUAN TRỌNG ĐÃ SỬA ---
@@ -39,6 +43,8 @@ services:
       - "7077:7077" # Cổng kết nối nội bộ
     environment:
       - SPARK_CONF_DIR=/opt/spark/conf
+    networks:
+      - landslide_network
     restart: always
 
   spark-worker:
@@ -53,9 +59,16 @@ services:
       - SPARK_CONF_DIR=/opt/spark/conf
       - SPARK_WORKER_CORES=1
       - SPARK_WORKER_MEMORY=3g
+    networks:
+      - landslide_network
     deploy:
       resources:
         limits:
           memory: 3.5G 
     restart: always
+
+networks:
+  landslide_network:
+    external: true
+    name: landslide_network
 
