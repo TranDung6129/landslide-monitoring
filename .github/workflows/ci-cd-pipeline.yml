@@ -77,106 +77,193 @@ jobs:
         run: |
           echo "Starting deploy version ${{ steps.get_version.outputs.VERSION }}..."
           
-          # --- 1. SERVER APP ---
+          # --- BƯỚC 1: DỌN DẸP TẤT CẢ CONTAINER CŨ ---
+          echo "=========================================="
+          echo "STEP 1: Cleaning up old containers..."
+          echo "=========================================="
+          
+          # Xóa tất cả container liên quan để tránh conflict
+          # Danh sách container cần xóa (dựa trên log thủ công của bạn)
+          CONTAINERS_TO_REMOVE="mosquitto mqtt-bridge kafka spark-master spark-worker zookeeper"
+          
+          for container in $CONTAINERS_TO_REMOVE; do
+            if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+              echo "Removing container: $container"
+              docker rm -f "$container" 2>/dev/null || echo "  → Already removed or not found"
+            else
+              echo "Container $container does not exist, skipping..."
+            fi
+          done
+          
+          # Xóa cả network cũ nếu có
+          docker network rm landslide_network 2>/dev/null || echo "Network already removed or not found"
+          
+          echo ""
+          echo "✓ Cleanup completed!"
+          echo ""
+          
+          # --- BƯỚC 2: DEPLOY SERVER (TẠO TẤT CẢ CONTAINERS) ---
+          echo "=========================================="
+          echo "STEP 2: Deploying Server Stack..."
+          echo "=========================================="
+          
           cd server
           export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
-          
           export COMPOSE_PROJECT_NAME=landslide_server
 
-          # Tải image mới nhất về (Lúc này chắc chắn đã có trên kho)
+          # Tải image mới nhất về
+          echo "Pulling latest images..."
           docker-compose pull
           
-          # Up container
-          docker-compose up -d --remove-orphans --force-recreate
+          # Up tất cả containers (mosquitto, kafka, spark, zookeeper, mqtt-bridge)
+          echo "Starting all containers with docker-compose..."
+          docker-compose up -d
           
-          # Restart Spark
-          echo "Restarting Spark..."
-          docker restart spark-master
-          sleep 10
+          # Đợi containers khởi động ổn định
+          echo "Waiting for containers to be ready..."
+          sleep 15
+          
+          # Kiểm tra trạng thái containers
+          echo ""
+          echo "Current running containers:"
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+          echo ""
+          
+          # --- BƯỚC 3: CHẠY SPARK JOB ---
+          echo "=========================================="
+          echo "STEP 3: Starting Spark Job..."
+          echo "=========================================="
+          
+          # Chờ Spark Master sẵn sàng
+          echo "Waiting for Spark Master to be ready..."
+          for i in {1..30}; do
+            if docker exec spark-master curl -s http://localhost:8080 > /dev/null 2>&1; then
+              echo "✓ Spark Master is ready!"
+              break
+            fi
+            echo "  Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Chạy Spark job trong background
+          echo "Submitting Spark job..."
           docker exec -d spark-master /opt/spark/bin/spark-submit \
             --master spark://spark-master:7077 \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
             /app/spark_jobs/processor.py
           
-          # Đợi một chút để job khởi động và có dữ liệu
-          echo "Waiting for Spark job to process data..."
-          sleep 30
+          echo "✓ Spark job submitted successfully!"
+          echo ""
           
-          # Lưu bảng dữ liệu ASCII từ Spark vào file
-          # Lưu vào thư mục cố định trong home directory để dễ truy cập
+          # --- BƯỚC 4: ĐỢI VÀ THU THẬP LOG ---
+          echo "=========================================="
+          echo "STEP 4: Collecting Spark Processing Logs..."
+          echo "=========================================="
+          
+          # Đợi để Spark job xử lý dữ liệu (theo log bạn, cần ít nhất vài batch)
+          echo "Waiting 40 seconds for Spark to process data batches..."
+          sleep 40
+          
+          # Tạo thư mục log
           LOG_DIR="$HOME/spark_logs"
           mkdir -p "$LOG_DIR"
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-          LOG_FILE="$LOG_DIR/spark_data_${TIMESTAMP}.log"
+          LOG_FILE="$LOG_DIR/spark_deployment_${TIMESTAMP}.log"
           
-          echo "Saving Spark processing data to file: $LOG_FILE"
-          
-          # Tìm driver container của Spark job
-          DRIVER_CONTAINER=$(docker ps --filter "ancestor=apache/spark:3.5.0" --format "{{.Names}}" | grep -v "spark-master\|spark-worker" | head -1)
+          echo "Saving Spark processing logs to: $LOG_FILE"
           
           {
             echo "=========================================="
-            echo "Spark Processing Data (ASCII Table)"
+            echo "LANDSLIDE MONITORING - SPARK DEPLOYMENT LOG"
+            echo "=========================================="
             echo "Timestamp: $(date)"
             echo "Version: ${{ steps.get_version.outputs.VERSION }}"
-            echo "Driver Container: ${DRIVER_CONTAINER:-Not found}"
+            echo "Deployed by: CI/CD Pipeline"
             echo "=========================================="
             echo ""
             
-            # Lấy log từ driver container nếu tìm thấy
-            if [ -n "$DRIVER_CONTAINER" ]; then
-              echo "--- Spark Driver Logs (from $DRIVER_CONTAINER) ---"
-              docker logs "$DRIVER_CONTAINER" --tail 1000 2>&1
-              echo ""
-            fi
-            
-            echo "--- Spark Master Logs (last 500 lines) ---"
-            docker logs spark-master --tail 500 2>&1
+            echo "CONTAINER STATUS:"
+            echo "---"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(mosquitto|mqtt-bridge|kafka|zookeeper|spark)" || echo "No containers found"
             echo ""
             
-            echo "--- Spark Worker Logs (last 500 lines) ---"
+            echo "=========================================="
+            echo "SPARK MASTER LOGS (Last 800 lines)"
+            echo "=========================================="
+            docker logs spark-master --tail 800 2>&1
+            echo ""
+            
+            echo "=========================================="
+            echo "SPARK WORKER LOGS (Last 500 lines)"
+            echo "=========================================="
             docker logs spark-worker --tail 500 2>&1 || echo "Worker logs not available"
             echo ""
             
-            echo "--- Extracted Console Output (Batch/Table data) ---"
-            # Tìm log chứa bảng ASCII từ tất cả containers
-            ALL_LOGS=""
-            if [ -n "$DRIVER_CONTAINER" ]; then
-              ALL_LOGS=$(docker logs "$DRIVER_CONTAINER" --tail 2000 2>&1)
-            fi
-            ALL_LOGS="$ALL_LOGS"$'\n'"$(docker logs spark-master --tail 1000 2>&1)"
-            ALL_LOGS="$ALL_LOGS"$'\n'"$(docker logs spark-worker --tail 1000 2>&1 2>/dev/null || echo '')"
+            echo "=========================================="
+            echo "MQTT BRIDGE LOGS (Last 300 lines)"
+            echo "=========================================="
+            docker logs mqtt-bridge --tail 300 2>&1 || echo "MQTT Bridge logs not available"
+            echo ""
             
-            # Tìm và hiển thị bảng ASCII
-            echo "$ALL_LOGS" | grep -A 20 -E "(Batch \d+|^\+\-|^\|.*window|^\|.*Avg_Acc_Z|^\|.*Max_Rain)" | head -300 || \
-            echo "$ALL_LOGS" | grep -E "(Batch|window|Avg_Acc_Z|Max_Rain|Max_Water|Last_GNSS|\+---|^\|)" | head -200 || \
-            echo "No table data found. Full logs saved above."
+            echo "=========================================="
+            echo "EXTRACTED BATCH PROCESSING DATA"
+            echo "=========================================="
+            echo "Looking for Batch processing tables..."
+            echo ""
+            
+            # Thu thập tất cả logs từ Spark containers
+            ALL_SPARK_LOGS=$(docker logs spark-master --tail 1500 2>&1)
+            
+            # Tìm và trích xuất bảng dữ liệu batch
+            echo "$ALL_SPARK_LOGS" | grep -B 2 -A 8 "Batch:" | head -200 || echo "⚠️ No batch data found yet. Job may still be starting."
             
             echo ""
             echo "=========================================="
-            echo "End of log"
+            echo "KAFKA TOPICS CHECK"
             echo "=========================================="
-          } > "$LOG_FILE"
-          
-          # Kiểm tra file đã được tạo chưa
-          if [ -f "$LOG_FILE" ]; then
-            echo "✓ Spark data saved to: $LOG_FILE"
-            echo "✓ File size: $(du -h "$LOG_FILE" | cut -f1)"
-            echo "✓ Full path: $(realpath "$LOG_FILE")"
-            ls -lh "$LOG_FILE"
-          else
-            echo "✗ ERROR: File was not created at $LOG_FILE"
-            echo "Current directory: $(pwd)"
-            echo "Log directory exists: $([ -d "$LOG_DIR" ] && echo 'Yes' || echo 'No')"
-          fi
+            docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 2>&1 || echo "Cannot list Kafka topics"
+            echo ""
             
-          # --- 2. GATEWAY (Nếu chạy chung server) ---
-          echo "Deploying Gateway..."
-          cd ../gateway
-          # Giả sử Gateway cũng dùng chung version
-          # Nếu gateway chạy máy khác thì bỏ đoạn này đi
-          docker-compose pull
-          docker-compose up -d --remove-orphans --force-recreate
-
-          echo "All Systems Deployed Successfully!"
+            echo "=========================================="
+            echo "END OF DEPLOYMENT LOG"
+            echo "=========================================="
+            echo "Generated at: $(date)"
+            echo "Log file: $LOG_FILE"
+            echo ""
+          } > "$LOG_FILE" 2>&1
+          
+          # Xác nhận file đã được tạo
+          if [ -f "$LOG_FILE" ]; then
+            echo ""
+            echo "SUCCESS! Logs saved successfully:"
+            echo "   File: $LOG_FILE"
+            echo "   Size: $(du -h "$LOG_FILE" | cut -f1)"
+            echo "   Path: $(realpath "$LOG_FILE")"
+            echo ""
+            ls -lh "$LOG_FILE"
+            
+            # Hiển thị một đoạn ngắn từ log
+            echo ""
+            echo "Preview (first 50 lines):"
+            echo "---"
+            head -50 "$LOG_FILE"
+            echo "..."
+          else
+            echo ""
+            echo "WARNING: Log file was not created at $LOG_FILE"
+            echo "Current directory: $(pwd)"
+            echo "Log directory: $LOG_DIR (exists: $([ -d "$LOG_DIR" ] && echo 'Yes' || echo 'No'))"
+          fi
+          
+          echo ""
+          echo "=========================================="
+          echo "ALL DEPLOYMENT STEPS COMPLETED!"
+          echo "=========================================="
+          echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+          echo "Deployed at: $(date)"
+          echo ""
+          echo "Active Containers:"
+          docker ps --format "  - {{.Names}} ({{.Status}})" | grep -E "(mosquitto|mqtt|kafka|spark|zookeeper)"
+          echo ""
+          echo "Deployment successful!"
 
