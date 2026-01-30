@@ -127,67 +127,131 @@ jobs:
           echo "✓ Cleanup completed!"
           echo ""
           
-          # --- BƯỚC 2: DEPLOY SERVER (TẠO TẤT CẢ CONTAINERS) ---
+          # --- BƯỚC 2: DEPLOY GATEWAY (MOSQUITTO + MQTT-BRIDGE) ---
           echo "=========================================="
-          echo "STEP 2: Deploying Server Stack..."
+          echo "STEP 2: Deploying Gateway (Mosquitto + MQTT Bridge)..."
           echo "=========================================="
           
-          cd server
+          cd gateway
+          export COMPOSE_PROJECT_NAME=landslide_gateway
+          
+          # Tải image mới nhất của mqtt-bridge
+          echo "Pulling latest gateway images..."
+          docker-compose pull
+          
+          # Khởi động gateway services
+          echo "Starting Gateway services..."
+          docker-compose up -d
+          
+          # Đợi gateway khởi động
+          echo "Waiting for Gateway to be ready..."
+          sleep 10
+          
+          # Kiểm tra Gateway
+          echo "Gateway containers:"
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(mosquitto|mqtt-bridge)" || echo "Warning: Gateway containers not found"
+          echo ""
+          
+          # --- BƯỚC 3: DEPLOY SERVER (KAFKA + SPARK + ZOOKEEPER) ---
+          echo "=========================================="
+          echo "STEP 3: Deploying Server Stack (Kafka + Spark)..."
+          echo "=========================================="
+          
+          cd ../server
           export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
           export COMPOSE_PROJECT_NAME=landslide_server
 
           # Tải image mới nhất về
-          echo "Pulling latest images..."
+          echo "Pulling latest server images..."
           docker-compose pull
           
-          # Up tất cả containers (mosquitto, kafka, spark, zookeeper, mqtt-bridge)
-          echo "Starting all containers with docker-compose..."
+          # Up tất cả server containers
+          echo "Starting Server services..."
           docker-compose up -d
           
           # Đợi containers khởi động ổn định
-          echo "Waiting for containers to be ready..."
+          echo "Waiting for Server services to be ready..."
           sleep 15
           
-          # Kiểm tra trạng thái containers
+          # Kiểm tra trạng thái TẤT CẢ containers
           echo ""
-          echo "Current running containers:"
+          echo "=========================================="
+          echo "ALL RUNNING CONTAINERS:"
+          echo "=========================================="
           docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           echo ""
           
-          # --- BƯỚC 3: CHẠY SPARK JOB ---
+          # --- BƯỚC 4: CHẠY SPARK JOB ---
           echo "=========================================="
-          echo "STEP 3: Starting Spark Job..."
+          echo "STEP 4: Starting Spark Job..."
           echo "=========================================="
           
           # Chờ Spark Master sẵn sàng
           echo "Waiting for Spark Master to be ready..."
           for i in {1..30}; do
             if docker exec spark-master curl -s http://localhost:8080 > /dev/null 2>&1; then
-              echo "✓ Spark Master is ready!"
+              echo "Spark Master is ready!"
               break
             fi
             echo "  Waiting... ($i/30)"
             sleep 2
           done
           
+          # Chờ Kafka sẵn sàng
+          echo ""
+          echo "Waiting for Kafka to be ready..."
+          for i in {1..20}; do
+            if docker exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1; then
+              echo "Kafka is ready!"
+              break
+            fi
+            echo "  Waiting... ($i/20)"
+            sleep 3
+          done
+          
+          # Kiểm tra MQTT Bridge đã kết nối Kafka chưa
+          echo ""
+          echo "Checking MQTT Bridge connection..."
+          docker logs mqtt-bridge --tail 20 2>&1 | grep -i "kafka" || echo "MQTT Bridge logs not showing Kafka yet"
+          
           # Chạy Spark job trong background
+          echo ""
           echo "Submitting Spark job..."
           docker exec -d spark-master /opt/spark/bin/spark-submit \
             --master spark://spark-master:7077 \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
             /app/spark_jobs/processor.py
           
-          echo "✓ Spark job submitted successfully!"
+          echo "Spark job submitted successfully!"
           echo ""
           
-          # --- BƯỚC 4: ĐỢI VÀ THU THẬP LOG ---
+          # --- BƯỚC 5: ĐỢI DATA FLOW QUA HỆ THỐNG (5 PHÚT) ---
           echo "=========================================="
-          echo "STEP 4: Collecting Spark Processing Logs..."
+          echo "STEP 5: Waiting for Data Flow (5 minutes)..."
           echo "=========================================="
+          echo "Pipeline: Edge -> MQTT -> Kafka -> Spark -> Batch Processing"
+          echo ""
           
-          # Đợi để Spark job xử lý dữ liệu (theo log bạn, cần ít nhất vài batch)
-          echo "Waiting 40 seconds for Spark to process data batches..."
-          sleep 40
+          # Đợi 5 phút để data flow qua toàn bộ pipeline
+          WAIT_TIME=300
+          echo "Waiting ${WAIT_TIME} seconds (5 minutes) for data to flow through the system..."
+          
+          # Hiển thị progress mỗi 30 giây
+          for i in {1..10}; do
+            ELAPSED=$((i * 30))
+            REMAINING=$((WAIT_TIME - ELAPSED))
+            echo "  [$(date +%H:%M:%S)] Progress: ${ELAPSED}s / ${WAIT_TIME}s (${REMAINING}s remaining...)"
+            sleep 30
+          done
+          
+          echo ""
+          echo "Wait completed! Now collecting logs..."
+          echo ""
+          
+          # --- BƯỚC 6: THU THẬP VÀ LƯU LOG ---
+          echo "=========================================="
+          echo "STEP 6: Collecting and Saving Logs..."
+          echo "=========================================="
           
           # Tạo thư mục log
           LOG_DIR="$HOME/spark_logs"
@@ -195,11 +259,11 @@ jobs:
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
           LOG_FILE="$LOG_DIR/spark_deployment_${TIMESTAMP}.log"
           
-          echo "Saving Spark processing logs to: $LOG_FILE"
+          echo "Saving comprehensive logs to: $LOG_FILE"
           
           {
             echo "=========================================="
-            echo "LANDSLIDE MONITORING - SPARK DEPLOYMENT LOG"
+            echo "LANDSLIDE MONITORING - DEPLOYMENT LOG"
             echo "=========================================="
             echo "Timestamp: $(date)"
             echo "Version: ${{ steps.get_version.outputs.VERSION }}"
@@ -207,15 +271,50 @@ jobs:
             echo "=========================================="
             echo ""
             
-            echo "CONTAINER STATUS:"
-            echo "---"
-            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(mosquitto|mqtt-bridge|kafka|zookeeper|spark)" || echo "No containers found"
+            echo "=========================================="
+            echo "CONTAINER STATUS (ALL)"
+            echo "=========================================="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "No containers found"
+            echo ""
+            
+            echo "Specific services status:"
+            echo "  Gateway:"
+            docker ps --format "  - {{.Names}} [{{.Status}}]" | grep -E "(mosquitto|mqtt-bridge)" || echo "    No gateway containers"
+            echo "  Server:"
+            docker ps --format "  - {{.Names}} [{{.Status}}]" | grep -E "(kafka|zookeeper|spark)" || echo "    No server containers"
             echo ""
             
             echo "=========================================="
-            echo "SPARK MASTER LOGS (Last 800 lines)"
+            echo "MOSQUITTO LOGS (Last 200 lines)"
             echo "=========================================="
-            docker logs spark-master --tail 800 2>&1
+            docker logs mosquitto --tail 200 2>&1 || echo "Mosquitto logs not available"
+            echo ""
+            
+            echo "=========================================="
+            echo "MQTT BRIDGE LOGS (Last 500 lines)"
+            echo "=========================================="
+            docker logs mqtt-bridge --tail 500 2>&1 || echo "MQTT Bridge logs not available"
+            echo ""
+            
+            echo "=========================================="
+            echo "KAFKA TOPICS & MESSAGES CHECK"
+            echo "=========================================="
+            echo "Available topics:"
+            docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 2>&1 || echo "Cannot list Kafka topics"
+            echo ""
+            echo "Sample messages from landslide_data topic (last 10):"
+            docker exec kafka kafka-console-consumer \
+              --bootstrap-server localhost:9092 \
+              --topic landslide_data \
+              --from-beginning \
+              --max-messages 10 \
+              --timeout-ms 5000 2>&1 || echo "No messages in Kafka yet"
+            echo ""
+            
+            echo "=========================================="
+            echo "SPARK MASTER LOGS (Last 1000 lines)"
+            echo "=========================================="
+            docker logs spark-master --tail 1000 2>&1
             echo ""
             
             echo "=========================================="
@@ -225,54 +324,71 @@ jobs:
             echo ""
             
             echo "=========================================="
-            echo "MQTT BRIDGE LOGS (Last 300 lines)"
+            echo "SPARK BATCH PROCESSING DATA (ASCII TABLES)"
             echo "=========================================="
-            docker logs mqtt-bridge --tail 300 2>&1 || echo "MQTT Bridge logs not available"
+            echo "Searching for batch processing results..."
             echo ""
             
-            echo "=========================================="
-            echo "EXTRACTED BATCH PROCESSING DATA"
-            echo "=========================================="
-            echo "Looking for Batch processing tables..."
+            # Thu thập tất cả logs từ Spark Master (nhiều hơn)
+            ALL_SPARK_LOGS=$(docker logs spark-master --tail 2000 2>&1)
+            
+            # Tìm tất cả batch data với pattern cụ thể
+            BATCH_DATA=$(echo "$ALL_SPARK_LOGS" | grep -B 3 -A 10 -E "^Batch:|^\+\-|window.*Avg_Acc_Z" | head -500)
+            
+            if [ -n "$BATCH_DATA" ]; then
+              echo "Found batch processing data:"
+              echo "$BATCH_DATA"
+            else
+              echo "WARNING: No batch data found in Spark Master logs."
+              echo "Possible reasons:"
+              echo "  1. No data from edge sensors yet"
+              echo "  2. MQTT Bridge not connected to Kafka"
+              echo "  3. Spark job not reading from Kafka correctly"
+              echo ""
+              echo "Checking for any table-like output:"
+              echo "$ALL_SPARK_LOGS" | grep -E "^\|.*\|" | head -50 || echo "No table output found"
+            fi
+            
             echo ""
-            
-            # Thu thập tất cả logs từ Spark containers
-            ALL_SPARK_LOGS=$(docker logs spark-master --tail 1500 2>&1)
-            
-            # Tìm và trích xuất bảng dữ liệu batch
-            echo "$ALL_SPARK_LOGS" | grep -B 2 -A 8 "Batch:" | head -200 || echo "⚠️ No batch data found yet. Job may still be starting."
-            
-            echo ""
-            echo "=========================================="
-            echo "KAFKA TOPICS CHECK"
-            echo "=========================================="
-            docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 2>&1 || echo "Cannot list Kafka topics"
-            echo ""
-            
             echo "=========================================="
             echo "END OF DEPLOYMENT LOG"
             echo "=========================================="
             echo "Generated at: $(date)"
             echo "Log file: $LOG_FILE"
+            echo "Total log size: $(echo "$ALL_SPARK_LOGS" | wc -l) lines from Spark Master"
             echo ""
           } > "$LOG_FILE" 2>&1
           
           # Xác nhận file đã được tạo
           if [ -f "$LOG_FILE" ]; then
             echo ""
-            echo "SUCCESS! Logs saved successfully:"
-            echo "   File: $LOG_FILE"
-            echo "   Size: $(du -h "$LOG_FILE" | cut -f1)"
-            echo "   Path: $(realpath "$LOG_FILE")"
+            echo "=========================================="
+            echo "SUCCESS! Logs saved successfully"
+            echo "=========================================="
+            echo "File: $LOG_FILE"
+            echo "Size: $(du -h "$LOG_FILE" | cut -f1)"
+            echo "Path: $(realpath "$LOG_FILE")"
             echo ""
             ls -lh "$LOG_FILE"
             
-            # Hiển thị một đoạn ngắn từ log
+            # Kiểm tra xem có batch data trong log không
             echo ""
-            echo "Preview (first 50 lines):"
-            echo "---"
-            head -50 "$LOG_FILE"
-            echo "..."
+            if grep -q "Batch:" "$LOG_FILE"; then
+              echo "Status: BATCH DATA FOUND in log file!"
+              echo ""
+              echo "Preview of batch data (first occurrence):"
+              echo "---"
+              grep -A 10 "Batch:" "$LOG_FILE" | head -15
+              echo "---"
+            else
+              echo "Status: No batch data found yet."
+              echo "This may be normal if edge sensors are not sending data."
+              echo ""
+              echo "To verify deployment manually later, check:"
+              echo "  1. Edge sensors running: docker ps (on edge devices)"
+              echo "  2. Data in Kafka: docker exec kafka kafka-console-consumer ..."
+              echo "  3. Spark processing: docker logs spark-master | grep Batch"
+            fi
           else
             echo ""
             echo "WARNING: Log file was not created at $LOG_FILE"
@@ -282,27 +398,47 @@ jobs:
           
           echo ""
           echo "=========================================="
-          echo "ALL DEPLOYMENT STEPS COMPLETED!"
+          echo "DEPLOYMENT COMPLETED SUCCESSFULLY!"
           echo "=========================================="
           echo "Version: ${{ steps.get_version.outputs.VERSION }}"
           echo "Deployed at: $(date)"
           echo ""
-          echo "Active Containers:"
-          docker ps --format "  - {{.Names}} ({{.Status}})" | grep -E "(mosquitto|mqtt|kafka|spark|zookeeper)"
+          echo "Deployed Components:"
           echo ""
-          echo "Deployment successful!"
+          echo "Gateway (Data Ingestion):"
+          docker ps --format "  - {{.Names}} [{{.Status}}]" | grep -E "(mosquitto|mqtt-bridge)" || echo "  (none)"
+          echo ""
+          echo "Server (Data Processing):"
+          docker ps --format "  - {{.Names}} [{{.Status}}]" | grep -E "(kafka|zookeeper|spark)" || echo "  (none)"
+          echo ""
+          echo "Total active containers:"
+          docker ps --format "  - {{.Names}}" | wc -l
+          echo ""
+          echo "Next Steps:"
+          echo "  1. Check log file: cat $LOG_FILE"
+          echo "  2. Monitor Spark: docker logs -f spark-master"
+          echo "  3. View Spark UI: http://server-ip:9090"
+          echo ""
+          echo "Deployment pipeline finished!"
       
       - name: Fix Permissions for Next Run
         if: always()
         run: |
+          echo "=========================================="
           echo "Fixing file permissions for next deployment..."
+          echo "=========================================="
           
           # Đặt lại ownership cho các thư mục được tạo bởi containers
           # Điều này đảm bảo lần deploy sau không gặp permission issues
+          
+          echo "Fixing gateway permissions..."
           sudo chown -R $(whoami):$(whoami) gateway/mosquitto 2>/dev/null || true
-          sudo chown -R $(whoami):$(whoami) server/spark/checkpoint 2>/dev/null || true
+          
+          echo "Fixing server permissions..."
+          sudo chown -R $(whoami):$(whoami) server/spark 2>/dev/null || true
           sudo chown -R $(whoami):$(whoami) server/kafka 2>/dev/null || true
           sudo chown -R $(whoami):$(whoami) server/zookeeper 2>/dev/null || true
           
           echo "Permission fix completed!"
+          echo ""
 
