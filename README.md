@@ -14,8 +14,8 @@ Dự án được đóng gói hoàn toàn bằng Docker và tích hợp tự đ�
   - [1. Triển khai máy chủ trung tâm](#1-triển-khai-máy-chủ-trung-tâm)
   - [2. Triển khai cổng trung chuyển](#2-triển-khai-cổng-trung-chuyển)
   - [3. Triển khai nút biên](#3-triển-khai-nút-biên)
-- [CI/CD Deployment](#cicd-deployment) 🆕
-- [Hệ thống giám sát và trực quan hóa](#hệ-thống-giám-sát-và-trực-quan-hóa-monitoring-stack) 🆕
+- [CI/CD Deployment](#cicd-deployment)
+- [Hệ thống giám sát và trực quan hóa](#hệ-thống-giám-sát-và-trực-quan-hóa-monitoring-stack)
 - [Quy trình phát triển](#quy-trình-phát-triển)
 - [Cấu hình nâng cao](#cấu-hình-nâng-cao)
 - [Khắc phục sự cố](#khắc-phục-sự-cố)
@@ -61,7 +61,7 @@ Hệ thống sử dụng **Fukuzono Model** để dự đoán thời điểm s�
 **Nguyên lý:**
 - Khi khối đất sắp trượt, vận tốc dịch chuyển tăng dần
 - Đồ thị `1/v` theo thời gian có xu hướng tiến về 0
-- Khi `1/v < 10` → Nguy cơ sạt lở cấp bách
+- Khi `1/v < 10` -> Nguy cơ sạt lở cấp bách
 
 **Tần số thu thập dữ liệu:**
 - **IMU (Gia tốc kế):** 200 Hz - Đo gia tốc, vận tốc dịch chuyển
@@ -72,15 +72,15 @@ Hệ thống sử dụng **Fukuzono Model** để dự đoán thời điểm s�
 **Xử lý dữ liệu (Data Resampling):**
 ```python
 # Spark Streaming đồng bộ dữ liệu về cửa sổ 1 giây
-- IMU (200 mẫu/s)  → Trung bình (avg) để giảm nhiễu
-- GNSS (10 mẫu/s)  → Lấy giá trị cuối (last interpolation)
-- Rain (1 mẫu/s)   → Lấy giá trị max
+- IMU (200 mẫu/s)  -> Trung bình (avg) để giảm nhiễu
+- GNSS (10 mẫu/s)  -> Lấy giá trị cuối (last interpolation)
+- Rain (1 mẫu/s)   -> Lấy giá trị max
 ```
 
 **Cảnh báo tự động:**
-- 🔴 **DANGER**: `inv_velocity < 10` → Sạt lở sắp xảy ra
-- 🟡 **WARNING**: `rain > 50 mm/h` → Mưa lớn, theo dõi
-- 🟢 **NORMAL**: Điều kiện bình thường
+- **DANGER**: inv_velocity < 10 - Sạt lở sắp xảy ra
+- **WARNING**: rain > 50 mm/h - Mưa lớn, theo dõi
+- **NORMAL**: Điều kiện bình thường
 
 ### Kiến trúc mạng
 
@@ -357,7 +357,7 @@ docker exec -it kafka kafka-console-consumer \
 
 ## CI/CD Deployment
 
-### 🚀 Triển Khai Tự Động (Khuyến Nghị)
+###  Triển Khai Tự Động (Khuyến Nghị)
 
 Hệ thống đã được tích hợp CI/CD pipeline hoàn chỉnh sử dụng GitHub Actions.
 
@@ -371,7 +371,7 @@ sudo chmod 440 /etc/sudoers.d/github-runner
 ```
 
 **2. Cài Đặt Self-Hosted Runner:**
-- Truy cập: Repository → Settings → Actions → Runners → New self-hosted runner
+- Truy cập: Repository -> Settings -> Actions -> Runners -> New self-hosted runner
 - Làm theo hướng dẫn để cài đặt runner trên server
 
 #### Quy Trình Deploy
@@ -406,7 +406,7 @@ Pipeline sẽ tự động chạy với các bước:
    - Redirect output to `/app/spark_jobs/spark_output.log`
 
 5. **Wait for Data Flow** (5 minutes)
-   - Đợi data flow qua pipeline: Edge → MQTT → Kafka → Spark
+   - Đợi data flow qua pipeline: Edge -> MQTT -> Kafka -> Spark
    - Monitor batch processing progress
 
 6. **Collect Logs** (30s)
@@ -431,7 +431,7 @@ docker network inspect landslide_network | grep Name
 
 All containers phải trong cùng network.
 
-**3. MQTT Bridge → Kafka:**
+**3. MQTT Bridge -> Kafka:**
 ```bash
 docker logs mqtt-bridge --tail 20
 ```
@@ -1172,7 +1172,7 @@ Hệ thống hỗ trợ 4 loại cảm biến chính, mỗi loại có đặc tr
 - **Phân bố:** Bước ngẫu nhiên đều quanh điểm cơ sở
 - **Đặc điểm:**
   - Độ chính xác: ~1 mét (GPS cấp người dùng)
-  - Chuyển đổi WGS84 → VN-2000 tự động
+  - Chuyển đổi WGS84 -> VN-2000 tự động
   - VN-2000 Y có False Easting +500,000m
 
 **Ví dụ đầu ra:**
@@ -1255,7 +1255,7 @@ Monitoring Stack là pipeline riêng biệt để giám sát và trực quan hó
 
 ### Thiết kế với Docker Compose Profiles
 
-**Vấn đề trước đây:** Có 2 files `docker-compose.yml` và `docker-compose.monitoring.yml` riêng biệt → phức tạp, khó quản lý.
+**Vấn đề trước đây:** Có 2 files `docker-compose.yml` và `docker-compose.monitoring.yml` riêng biệt -> phức tạp, khó quản lý.
 
 **Giải pháp hiện tại:** Sử dụng **Docker Compose Profiles** trong 1 file duy nhất:
 
@@ -1279,17 +1279,17 @@ services:
 ```
 
 **Lợi ích:**
-- ✅ 1 file duy nhất, dễ maintain
-- ✅ Deploy core riêng: `docker-compose --profile core up -d`
-- ✅ Deploy monitoring riêng: `docker-compose --profile monitoring up -d`
-- ✅ Không xung đột containers
+- 1 file duy nhất, dễ maintain
+- Deploy core riêng: docker-compose --profile core up -d
+- Deploy monitoring riêng: docker-compose --profile monitoring up -d
+- Không xung đột containers
 
 ### Kiến trúc
 
 ```
 Kafka (từ pipeline chính)
     ↓
-Spark Monitoring → InfluxDB → Grafana
+Spark Monitoring -> InfluxDB -> Grafana
                               ↑
 Prometheus ← Node Exporter (Metrics hệ thống)
 ```
@@ -1298,7 +1298,7 @@ Prometheus ← Node Exporter (Metrics hệ thống)
 
 | Thành phần | Pipeline chính | Monitoring Pipeline |
 |------------|----------------|---------------------|
-| Trigger CI/CD | Tag `v*` | Tag `monitoring-v*` |
+| Trigger CI/CD | Tag v* | Tag monitoring-v* |
 | Spark UI | Port 9090 | Port 8081 |
 | Spark Master | Port 7077 | Port 7078 |
 | Output | Console | InfluxDB |
