@@ -1,0 +1,27 @@
+name: Deploy Monitoring Stack
+
+on:
+  push:
+    paths:
+      - 'server/docker-compose.monitoring.yml'
+      - 'server/prometheus.yml'
+      - '.github/workflows/monitoring-deploy.yml'
+
+jobs:
+  deploy-monitoring:
+    name: Deploy Influx/Grafana/Prometheus
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Ensure Shared Network
+        run: |
+          docker network inspect landslide_network >/dev/null 2>&1 || docker network create landslide_network
+
+      - name: Deploy Monitoring Stack
+        run: |
+          cd server
+          docker-compose -f docker-compose.monitoring.yml pull
+          docker-compose -p landslide_mon -f docker-compose.monitoring.yml up -d --remove-orphans
+

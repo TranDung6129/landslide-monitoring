@@ -71,7 +71,7 @@ jobs:
             # Xóa các file log và data được tạo bởi containers
             sudo rm -rf "$WORKSPACE_DIR/gateway/mosquitto/log" 2>/dev/null || true
             sudo rm -rf "$WORKSPACE_DIR/gateway/mosquitto/data" 2>/dev/null || true
-            sudo rm -rf "$WORKSPACE_DIR/server/spark/checkpoint" 2>/dev/null || true
+            sudo rm -rf "$WORKSPACE_DIR/server/spark_jobs/checkpoint" 2>/dev/null || true
             sudo rm -rf "$WORKSPACE_DIR/server/kafka/data" 2>/dev/null || true
             sudo rm -rf "$WORKSPACE_DIR/server/zookeeper/data" 2>/dev/null || true
             
@@ -120,10 +120,7 @@ jobs:
             fi
           done
           
-          # Xóa network cũ nếu có
-          docker network rm landslide_network 2>/dev/null || echo "Network already removed or not found"
-          
-          # Tạo shared network mới để gateway và server giao tiếp được
+          # Đảm bảo shared network tồn tại để gateway và server giao tiếp được
           echo ""
           echo "Creating shared Docker network..."
           docker network create landslide_network || echo "Network already exists (will use existing)"
@@ -172,6 +169,10 @@ jobs:
           # Tải image mới nhất về
           echo "Pulling latest server images..."
           docker-compose pull
+          
+          # Build image mới cho server
+          echo "Building server images..."
+          docker-compose build
           
           # Up tất cả server containers
           echo "Starting Server services..."
@@ -476,7 +477,7 @@ jobs:
           sudo chown -R $(whoami):$(whoami) gateway/mosquitto 2>/dev/null || true
           
           echo "Fixing server permissions..."
-          sudo chown -R $(whoami):$(whoami) server/spark 2>/dev/null || true
+          sudo chown -R $(whoami):$(whoami) server/spark_jobs 2>/dev/null || true
           sudo chown -R $(whoami):$(whoami) server/kafka 2>/dev/null || true
           sudo chown -R $(whoami):$(whoami) server/zookeeper 2>/dev/null || true
           

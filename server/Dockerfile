@@ -11,10 +11,8 @@ WORKDIR /app
 # Điều này giúp Image chứa sẵn code, không cần mount volume nữa
 COPY spark_jobs /app/spark_jobs
 
-# Nếu sau này processor.py cần thư viện ngoài (ví dụ numpy, pandas)
-# thì uncomment 2 dòng dưới để cài đặt:
-# COPY requirements.txt .
-# RUN pip install --no-cache-dir -r requirements.txt
+# Cài đặt thư viện InfluxDB Client
+RUN pip install --no-cache-dir influxdb-client pandas
 
 # Thiết lập thư mục mặc định khi container chạy
 WORKDIR /opt/spark/work-dir
