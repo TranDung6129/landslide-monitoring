@@ -1278,12 +1278,6 @@ services:
     ...
 ```
 
-**Lợi ích:**
-- 1 file duy nhất, dễ maintain
-- Deploy core riêng: docker-compose --profile core up -d
-- Deploy monitoring riêng: docker-compose --profile monitoring up -d
-- Không xung đột containers
-
 ### Kiến trúc
 
 ```
@@ -1339,7 +1333,6 @@ docker exec -d spark-master-monitoring /opt/spark/bin/spark-submit \
 **Docker Compose Profiles giải thích:**
 - Services **không** có `profiles`: Luôn chạy (Kafka, Zookeeper, Spark chính)
 - Services có `profiles: ["monitoring"]`: Chỉ chạy khi dùng `--profile monitoring`
-- Lợi ích: 1 file duy nhất, dễ quản lý, phù hợp thực tế production
 
 ### Truy cập Dashboard
 
@@ -1418,16 +1411,10 @@ docker-compose --profile core --profile monitoring down -v
 ### Về 2 Dockerfiles
 
 Dự án có 2 Dockerfiles trong thư mục `server/`:
-- **`Dockerfile`**: Spark image gốc cho pipeline chính (output console)
-- **`Dockerfile.monitoring`**: Spark image có thêm InfluxDB client cho monitoring pipeline
+- `Dockerfile`: Spark image cho pipeline chính
+- `Dockerfile.monitoring`: Spark image với InfluxDB client
 
-**Lý do:** 
-- Pipeline chính không cần dependencies nặng của monitoring
-- Tách biệt concerns: core processing vs monitoring/visualization
-- Trong thực tế production, đây là practice tốt để:
-  - Giảm kích thước image cho core services
-  - Deploy monitoring độc lập (optional)
-  - Scale riêng từng thành phần
+Pipeline chính không cần dependencies của monitoring. Tách biệt giúp giảm kích thước image core và deploy monitoring độc lập.
 
 ### Khắc phục sự cố
 
