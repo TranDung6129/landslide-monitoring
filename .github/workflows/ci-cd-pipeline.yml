@@ -171,11 +171,11 @@ jobs:
 
           # Tải image mới nhất về
           echo "Pulling latest server images..."
-          docker-compose pull
+          docker-compose --profile core pull
           
-          # Up tất cả server containers
-          echo "Starting Server services..."
-          docker-compose up -d
+          # Up server containers với profile core
+          echo "Starting Server services with core profile..."
+          docker-compose --profile core up -d
           
           # Đợi containers khởi động ổn định
           echo "Waiting for Server services to be ready..."

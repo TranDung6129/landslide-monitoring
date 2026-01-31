@@ -2,10 +2,11 @@ version: '3'
 
 services:
   # ============================================
-  # CORE SERVICES (Luôn chạy)
+  # CORE SERVICES (Profile: core)
   # ============================================
   
   zookeeper:
+    profiles: ["core"]
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
     environment:
@@ -16,6 +17,7 @@ services:
     restart: always
 
   kafka:
+    profiles: ["core"]
     image: confluentinc/cp-kafka:7.4.0
     container_name: kafka
     depends_on:
@@ -34,6 +36,7 @@ services:
     restart: always
 
   spark-master:
+    profiles: ["core"]
     image: apache/spark:3.5.0
     container_name: spark-master
     user: root
@@ -50,6 +53,7 @@ services:
     restart: always
 
   spark-worker:
+    profiles: ["core"]
     image: apache/spark:3.5.0
     container_name: spark-worker
     user: root

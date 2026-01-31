@@ -1260,14 +1260,16 @@ Monitoring Stack là pipeline riêng biệt để giám sát và trực quan hó
 **Giải pháp hiện tại:** Sử dụng **Docker Compose Profiles** trong 1 file duy nhất:
 
 ```yaml
-# Services core (không có profile) - Luôn chạy
+# Services core (profile: "core") - Main pipeline
 services:
   kafka:
+    profiles: ["core"]
     ...
   spark-master:
+    profiles: ["core"]
     ...
 
-# Services monitoring (có profile) - Chỉ chạy khi cần
+# Services monitoring (profile: "monitoring") - Optional
   influxdb:
     profiles: ["monitoring"]
     ...
@@ -1278,9 +1280,9 @@ services:
 
 **Lợi ích:**
 - ✅ 1 file duy nhất, dễ maintain
-- ✅ Deploy core services độc lập: `docker-compose up -d`
-- ✅ Deploy với monitoring: `docker-compose --profile monitoring up -d`
-- ✅ Phù hợp thực tế production (optional services)
+- ✅ Deploy core riêng: `docker-compose --profile core up -d`
+- ✅ Deploy monitoring riêng: `docker-compose --profile monitoring up -d`
+- ✅ Không xung đột containers
 
 ### Kiến trúc
 
@@ -1319,10 +1321,13 @@ git push origin monitoring-v1.0.0
 cd server
 
 # Chỉ chạy core services (Kafka, Spark chính)
-docker-compose up -d
+docker-compose --profile core up -d
 
-# Hoặc chạy kèm monitoring
+# Chỉ chạy monitoring
 docker-compose --profile monitoring up -d
+
+# Chạy cả 2
+docker-compose --profile core --profile monitoring up -d
 
 # Submit Spark monitoring job
 docker exec -d spark-master-monitoring /opt/spark/bin/spark-submit \
@@ -1401,13 +1406,13 @@ docker exec landslide_influxdb influx query \
 cd server
 
 # Dừng chỉ monitoring services
-docker-compose --profile monitoring stop
-
-# Dừng và xóa monitoring services
 docker-compose --profile monitoring down
 
-# Dừng tất cả (core + monitoring)
-docker-compose --profile monitoring down -v
+# Dừng chỉ core services  
+docker-compose --profile core down
+
+# Dừng tất cả
+docker-compose --profile core --profile monitoring down -v
 ```
 
 ### Về 2 Dockerfiles

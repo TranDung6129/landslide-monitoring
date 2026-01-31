@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'monitoring-v*'  # Trigger khi đánh tag monitoring-v1.0.0, monitoring-v1.1.0, etc.
-    paths:
-      - 'server/docker-compose.monitoring.yml'
-      - 'server/Dockerfile.monitoring'
-      - 'server/spark_jobs/processor_monitoring.py'
-      - 'server/monitoring/**'
-      - '.github/workflows/monitoring-pipeline.yml'
   workflow_dispatch:  # Cho phép chạy manual từ GitHub UI
 
 permissions:
