@@ -1,6 +1,10 @@
 version: '3'
 
 services:
+  # ============================================
+  # CORE SERVICES (Luôn chạy)
+  # ============================================
+  
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
@@ -21,28 +25,24 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # Cấu hình mạng để Spark trong Docker và Laptop ngoài đều gọi được
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      # KAFKA_HEAP_OPTS: "-Xmx400M -Xms400M"
     networks:
       - landslide_network
     restart: always
 
-  # --- PHẦN QUAN TRỌNG ĐÃ SỬA ---
   spark-master:
     image: apache/spark:3.5.0
     container_name: spark-master
-    user: root # Chạy quyền root để tránh lỗi permission
-    # Lệnh này ép Master chạy nền
+    user: root
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "9090:8080" # Web UI
-      - "7077:7077" # Cổng kết nối nội bộ
+      - "9090:8080"  # Web UI
+      - "7077:7077"  # Spark port
     volumes:
-      - ./spark_jobs:/app/spark_jobs  # Mount Spark jobs vào container
+      - ./spark_jobs:/app/spark_jobs
     environment:
       - SPARK_CONF_DIR=/opt/spark/conf
     networks:
@@ -55,7 +55,6 @@ services:
     user: root
     depends_on:
       - spark-master
-    # Lệnh này ép Worker chạy và kết nối tới Master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_CONF_DIR=/opt/spark/conf
@@ -66,11 +65,142 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3.5G 
+          memory: 3.5G
     restart: always
+
+  # ============================================
+  # MONITORING SERVICES (Optional - dùng profile)
+  # ============================================
+  
+  influxdb:
+    profiles: ["monitoring"]
+    image: influxdb:2.7
+    container_name: landslide_influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpassword
+      - DOCKER_INFLUXDB_INIT_ORG=landslide_org
+      - DOCKER_INFLUXDB_INIT_BUCKET=sensor_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - landslide_network
+    restart: always
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:latest
+    container_name: landslide_prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - landslide_network
+    restart: always
+
+  node-exporter:
+    profiles: ["monitoring"]
+    image: prom/node-exporter:latest
+    container_name: landslide_node_exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - landslide_network
+    restart: always
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:latest
+    container_name: landslide_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - influxdb
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - landslide_network
+    restart: always
+
+  spark-master-monitoring:
+    profiles: ["monitoring"]
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring
+    container_name: spark-master-monitoring
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8081:8080"
+      - "7078:7077"
+    volumes:
+      - ./spark_jobs:/app/spark_jobs
+      - ./monitoring/checkpoint:/app/checkpoint
+    environment:
+      - SPARK_CONF_DIR=/opt/spark/conf
+    networks:
+      - landslide_network
+    restart: always
+    depends_on:
+      - influxdb
+
+  spark-worker-monitoring:
+    profiles: ["monitoring"]
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring
+    container_name: spark-worker-monitoring
+    user: root
+    depends_on:
+      - spark-master-monitoring
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master-monitoring:7077
+    environment:
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+    networks:
+      - landslide_network
+    deploy:
+      resources:
+        limits:
+          memory: 2.5G
+    restart: always
+
+volumes:
+  influxdb_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   landslide_network:
     external: true
     name: landslide_network
-

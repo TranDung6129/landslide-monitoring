@@ -1,0 +1,29 @@
+apiVersion: 1
+
+datasources:
+  # InfluxDB Data Source for Sensor Data
+  - name: InfluxDB-SensorData
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    jsonData:
+      version: Flux
+      organization: landslide_org
+      defaultBucket: sensor_data
+      tlsSkipVerify: true
+    secureJsonData:
+      token: my-super-secret-auth-token
+    isDefault: true
+    editable: true
+
+  # Prometheus Data Source for System Monitoring
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+    isDefault: false
+    editable: true
+

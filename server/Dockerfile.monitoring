@@ -1,0 +1,31 @@
+# Use Apache Spark base image
+FROM apache/spark:3.5.0
+
+# Switch to root user for installations
+USER root
+
+# Create working directory
+WORKDIR /app
+
+# Copy requirements file
+COPY requirements.txt /app/requirements.txt
+
+# Install Python dependencies including InfluxDB client
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy Spark jobs
+COPY spark_jobs /app/spark_jobs
+
+# Create checkpoint directory
+RUN mkdir -p /app/checkpoint && chmod 777 /app/checkpoint
+
+# Set default working directory
+WORKDIR /opt/spark/work-dir
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD pgrep -f "org.apache.spark.deploy" || exit 1
+
+# Default command (can be overridden in docker-compose)
+CMD ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+

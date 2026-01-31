@@ -15,6 +15,7 @@ Dự án được đóng gói hoàn toàn bằng Docker và tích hợp tự đ�
   - [2. Triển khai cổng trung chuyển](#2-triển-khai-cổng-trung-chuyển)
   - [3. Triển khai nút biên](#3-triển-khai-nút-biên)
 - [CI/CD Deployment](#cicd-deployment) 🆕
+- [Hệ thống giám sát và trực quan hóa](#hệ-thống-giám-sát-và-trực-quan-hóa-monitoring-stack) 🆕
 - [Quy trình phát triển](#quy-trình-phát-triển)
 - [Cấu hình nâng cao](#cấu-hình-nâng-cao)
 - [Khắc phục sự cố](#khắc-phục-sự-cố)
@@ -701,6 +702,41 @@ docker-compose -p cluster_b up -d
 
 ---
 
+## Lịch sử deployment và vấn đề đã khắc phục
+
+### Các vấn đề chính
+
+**1. Container Name Conflict**
+- Triệu chứng: `The container name "/mosquitto" is already in use`
+- Khắc phục: Cleanup containers cũ trước deploy (xem CI/CD pipeline)
+
+**2. Permission Denied**  
+- Triệu chứng: `EACCES: permission denied, unlink mosquitto.log`
+- Khắc phục: Thêm sudo permissions cho GitHub runner
+
+**3. Network Isolation**
+- Triệu chứng: mqtt-bridge không kết nối được kafka  
+- Khắc phục: Dùng shared network `landslide_network`
+
+**4. Spark Output Mất**
+- Triệu chứng: Job chạy nhưng không thấy batch data
+- Khắc phục: Redirect output vào `/app/spark_jobs/spark_output.log`
+
+### Kiểm tra deployment
+
+```bash
+# Containers và network
+docker ps && docker network inspect landslide_network
+
+# MQTT Bridge kết nối Kafka  
+docker logs mqtt-bridge --tail 10
+
+# Spark batch processing
+docker exec spark-master cat /app/spark_jobs/spark_output.log | grep "Batch:"
+```
+
+---
+
 ## Khắc phục sự cố
 
 ### 1. Container không khởi động
@@ -1205,6 +1241,222 @@ sensors/cluster_B/groundwater
 
 ---
 
+---
+
+## Hệ thống giám sát và trực quan hóa (Monitoring Stack)
+
+### Tổng quan
+
+Monitoring Stack là pipeline riêng biệt để giám sát và trực quan hóa dữ liệu thời gian thực, bao gồm:
+- **InfluxDB 2.7**: Cơ sở dữ liệu chuỗi thời gian
+- **Grafana**: Nền tảng trực quan hóa với dashboard
+- **Prometheus**: Giám sát hệ thống
+- **Spark Streaming**: Xử lý riêng ghi vào InfluxDB
+
+### Thiết kế với Docker Compose Profiles
+
+**Vấn đề trước đây:** Có 2 files `docker-compose.yml` và `docker-compose.monitoring.yml` riêng biệt → phức tạp, khó quản lý.
+
+**Giải pháp hiện tại:** Sử dụng **Docker Compose Profiles** trong 1 file duy nhất:
+
+```yaml
+# Services core (không có profile) - Luôn chạy
+services:
+  kafka:
+    ...
+  spark-master:
+    ...
+
+# Services monitoring (có profile) - Chỉ chạy khi cần
+  influxdb:
+    profiles: ["monitoring"]
+    ...
+  grafana:
+    profiles: ["monitoring"]
+    ...
+```
+
+**Lợi ích:**
+- ✅ 1 file duy nhất, dễ maintain
+- ✅ Deploy core services độc lập: `docker-compose up -d`
+- ✅ Deploy với monitoring: `docker-compose --profile monitoring up -d`
+- ✅ Phù hợp thực tế production (optional services)
+
+### Kiến trúc
+
+```
+Kafka (từ pipeline chính)
+    ↓
+Spark Monitoring → InfluxDB → Grafana
+                              ↑
+Prometheus ← Node Exporter (Metrics hệ thống)
+```
+
+**Lưu ý:** Monitoring stack hoàn toàn độc lập với pipeline chính, không ảnh hưởng đến luồng dữ liệu hiện tại.
+
+| Thành phần | Pipeline chính | Monitoring Pipeline |
+|------------|----------------|---------------------|
+| Trigger CI/CD | Tag `v*` | Tag `monitoring-v*` |
+| Spark UI | Port 9090 | Port 8081 |
+| Spark Master | Port 7077 | Port 7078 |
+| Output | Console | InfluxDB |
+
+### Triển khai Monitoring Stack
+
+**Lưu ý:** Từ phiên bản mới, tất cả services (core + monitoring) nằm trong **1 file docker-compose.yml duy nhất** với Docker Compose **profiles**.
+
+#### 1. Triển khai qua CI/CD (Khuyến nghị)
+
+```bash
+# Đánh tag để trigger workflow
+git tag monitoring-v1.0.0
+git push origin monitoring-v1.0.0
+```
+
+#### 2. Triển khai thủ công
+
+```bash
+cd server
+
+# Chỉ chạy core services (Kafka, Spark chính)
+docker-compose up -d
+
+# Hoặc chạy kèm monitoring
+docker-compose --profile monitoring up -d
+
+# Submit Spark monitoring job
+docker exec -d spark-master-monitoring /opt/spark/bin/spark-submit \
+  --master spark://spark-master-monitoring:7077 \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+  /app/spark_jobs/processor_monitoring.py
+```
+
+**Docker Compose Profiles giải thích:**
+- Services **không** có `profiles`: Luôn chạy (Kafka, Zookeeper, Spark chính)
+- Services có `profiles: ["monitoring"]`: Chỉ chạy khi dùng `--profile monitoring`
+- Lợi ích: 1 file duy nhất, dễ quản lý, phù hợp thực tế production
+
+### Truy cập Dashboard
+
+Sau khi triển khai thành công:
+
+| Dịch vụ | URL | Đăng nhập |
+|---------|-----|-----------|
+| Grafana | http://localhost:3000 | admin / admin |
+| InfluxDB | http://localhost:8086 | admin / adminpassword |
+| Prometheus | http://localhost:9091 | - |
+| Spark UI | http://localhost:8081 | - |
+
+### Dashboard có sẵn
+
+#### 1. Dashboard Phân tích Fukuzono
+
+Hiển thị dữ liệu dự đoán sạt lở theo thời gian thực:
+- Mức cảnh báo (NORMAL/WARNING/DANGER)
+- Đồ thị nghịch đảo vận tốc (1/v)
+- Vận tốc IMU
+- Cường độ mưa
+- Dịch chuyển GNSS
+- Áp suất nước ngầm
+- Rung động (Acceleration RMS)
+
+#### 2. Dashboard Giám sát Hệ thống
+
+Hiển thị tình trạng hệ thống:
+- CPU, Memory, Disk Usage
+- Network Traffic
+- System Uptime
+- CPU Temperature
+
+### Cấu hình InfluxDB
+
+**Organization:** `landslide_org`
+**Bucket:** `sensor_data`
+**Token:** `my-super-secret-auth-token`
+
+Dữ liệu được lưu với cấu trúc:
+```
+Measurement: landslide_metrics
+Tags: cluster_id
+Fields: inv_velocity, avg_velocity, rain_intensity, 
+        pore_pressure, gnss_x, gnss_y, alert_level
+```
+
+### Truy vấn dữ liệu
+
+```bash
+# Kiểm tra dữ liệu trong InfluxDB
+docker exec landslide_influxdb influx query \
+  --org landslide_org \
+  --token my-super-secret-auth-token \
+  'from(bucket: "sensor_data") 
+   |> range(start: -5m) 
+   |> filter(fn: (r) => r["_measurement"] == "landslide_metrics")
+   |> limit(n: 10)'
+```
+
+### Dừng Monitoring Stack
+
+```bash
+cd server
+
+# Dừng chỉ monitoring services
+docker-compose --profile monitoring stop
+
+# Dừng và xóa monitoring services
+docker-compose --profile monitoring down
+
+# Dừng tất cả (core + monitoring)
+docker-compose --profile monitoring down -v
+```
+
+### Về 2 Dockerfiles
+
+Dự án có 2 Dockerfiles trong thư mục `server/`:
+- **`Dockerfile`**: Spark image gốc cho pipeline chính (output console)
+- **`Dockerfile.monitoring`**: Spark image có thêm InfluxDB client cho monitoring pipeline
+
+**Lý do:** 
+- Pipeline chính không cần dependencies nặng của monitoring
+- Tách biệt concerns: core processing vs monitoring/visualization
+- Trong thực tế production, đây là practice tốt để:
+  - Giảm kích thước image cho core services
+  - Deploy monitoring độc lập (optional)
+  - Scale riêng từng thành phần
+
+### Khắc phục sự cố
+
+#### Không có dữ liệu trong Grafana
+
+```bash
+# 1. Kiểm tra Spark job
+docker logs spark-master-monitoring | grep "Batch"
+
+# 2. Kiểm tra Kafka có dữ liệu
+docker exec kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic landslide_data --max-messages 5
+
+# 3. Kiểm tra kết nối InfluxDB
+docker exec landslide_influxdb influx ping
+
+# 4. Restart Spark job
+docker exec spark-master-monitoring pkill -f processor_monitoring
+# Rồi submit lại job
+```
+
+#### Grafana không kết nối InfluxDB
+
+```bash
+# Test từ container Grafana
+docker exec landslide_grafana curl http://influxdb:8086/ping
+
+# Kiểm tra network
+docker network inspect landslide_network
+```
+
+---
+
 ## Tài liệu tham khảo
 
 ### Công nghệ sử dụng
@@ -1214,6 +1466,9 @@ sensors/cluster_B/groundwater
 - [Eclipse Mosquitto](https://mosquitto.org/documentation/)
 - [Tham chiếu Docker Compose](https://docs.docker.com/compose/compose-file/)
 - [Github Actions](https://docs.github.com/en/actions)
+- [InfluxDB 2.x Documentation](https://docs.influxdata.com/influxdb/v2.7/)
+- [Grafana Documentation](https://grafana.com/docs/)
+- [Prometheus Documentation](https://prometheus.io/docs/)
 
 ---
 

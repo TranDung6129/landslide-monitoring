@@ -1,0 +1,5 @@
+# Requirements for Landslide Monitoring - InfluxDB Integration
+influxdb-client>=1.38.0
+pandas>=2.0.0
+numpy>=1.24.0
+

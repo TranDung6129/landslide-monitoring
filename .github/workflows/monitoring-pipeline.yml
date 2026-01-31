@@ -1,0 +1,418 @@
+name: Monitoring Pipeline - Deploy
+
+on:
+  push:
+    tags:
+      - 'monitoring-v*'  # Trigger khi đánh tag monitoring-v1.0.0, monitoring-v1.1.0, etc.
+    paths:
+      - 'server/docker-compose.monitoring.yml'
+      - 'server/Dockerfile.monitoring'
+      - 'server/spark_jobs/processor_monitoring.py'
+      - 'server/monitoring/**'
+      - '.github/workflows/monitoring-pipeline.yml'
+  workflow_dispatch:  # Cho phép chạy manual từ GitHub UI
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ============================================
+  # JOB 1: BUILD & PUSH MONITORING IMAGES
+  # ============================================
+  build-monitoring-images:
+    name: Build Monitoring Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: |
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/monitoring-}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Monitoring Spark Image
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME=ghcr.io/$OWNER_LC/landslide-monitoring-spark
+          TAG=${{ steps.get_version.outputs.VERSION }}
+          
+          cd server
+          docker build -f Dockerfile.monitoring -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
+          
+          echo "✓ Pushed image: $IMAGE_NAME:$TAG"
+
+  # ============================================
+  # JOB 2: DEPLOY TO SERVER
+  # ============================================
+  deploy-monitoring:
+    name: Deploy Monitoring Stack
+    needs: build-monitoring-images
+    runs-on: self-hosted
+    steps:
+      - name: Clean Workspace
+        run: |
+          echo "=========================================="
+          echo "Cleaning Workspace for Monitoring Stack"
+          echo "=========================================="
+          
+          WORKSPACE_DIR="${GITHUB_WORKSPACE:-$HOME/actions-runner/_work/landslide-monitoring/landslide-monitoring}"
+          
+          if [ -d "$WORKSPACE_DIR" ]; then
+            echo "Removing old monitoring data..."
+            sudo rm -rf "$WORKSPACE_DIR/server/monitoring/checkpoint" 2>/dev/null || true
+            sudo rm -rf "$WORKSPACE_DIR/server/influxdb_config" 2>/dev/null || true
+            
+            sudo chown -R $(whoami):$(whoami) "$WORKSPACE_DIR" 2>/dev/null || true
+            echo "✓ Workspace cleaned"
+          fi
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get_version
+        run: |
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/monitoring-}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check and Create Network
+        run: |
+          echo "=========================================="
+          echo "Checking Docker Network"
+          echo "=========================================="
+          
+          if docker network ls | grep -q "landslide_network"; then
+            echo "✓ Network 'landslide_network' exists"
+          else
+            echo "Creating network 'landslide_network'..."
+            docker network create landslide_network
+            echo "✓ Network created"
+          fi
+
+      - name: Stop Old Monitoring Stack
+        run: |
+          echo "=========================================="
+          echo "Stopping Old Monitoring Stack (if exists)"
+          echo "=========================================="
+          
+          cd server
+          docker-compose --profile monitoring down 2>/dev/null || echo "No old stack to stop"
+          
+          # Remove old monitoring containers if they exist
+          MONITORING_CONTAINERS="landslide_influxdb landslide_grafana landslide_prometheus landslide_node_exporter spark-master-monitoring spark-worker-monitoring"
+          
+          for container in $MONITORING_CONTAINERS; do
+            if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+              echo "Removing container: $container"
+              docker rm -f "$container" 2>/dev/null || true
+            fi
+          done
+          
+          echo "✓ Old stack cleaned"
+
+      - name: Deploy Monitoring Stack
+        run: |
+          echo "=========================================="
+          echo "Deploying Monitoring Stack"
+          echo "=========================================="
+          echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+          echo "Timestamp: $(date)"
+          echo "=========================================="
+          
+          cd server
+          export APP_VERSION=${{ steps.get_version.outputs.VERSION }}
+          export COMPOSE_PROJECT_NAME=landslide_monitoring
+          
+          # Pull latest images
+          echo ""
+          echo "Pulling latest monitoring images..."
+          docker-compose --profile monitoring pull
+          
+          # Start all services with monitoring profile
+          echo ""
+          echo "Starting services with monitoring profile..."
+          docker-compose --profile monitoring up -d
+          
+          echo "✓ Monitoring stack started"
+
+      - name: Wait for Services to be Ready
+        run: |
+          echo "=========================================="
+          echo "Waiting for Services to Initialize"
+          echo "=========================================="
+          
+          # Wait for InfluxDB
+          echo ""
+          echo "Waiting for InfluxDB..."
+          for i in {1..30}; do
+            if docker exec landslide_influxdb influx ping > /dev/null 2>&1; then
+              echo "✓ InfluxDB is ready!"
+              break
+            fi
+            echo "  Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Wait for Grafana
+          echo ""
+          echo "Waiting for Grafana..."
+          for i in {1..30}; do
+            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "✓ Grafana is ready!"
+              break
+            fi
+            echo "  Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Wait for Prometheus
+          echo ""
+          echo "Waiting for Prometheus..."
+          for i in {1..30}; do
+            if curl -s http://localhost:9091/-/healthy > /dev/null 2>&1; then
+              echo "✓ Prometheus is ready!"
+              break
+            fi
+            echo "  Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Wait for Spark Master
+          echo ""
+          echo "Waiting for Spark Master (Monitoring)..."
+          for i in {1..30}; do
+            if docker exec spark-master-monitoring curl -s http://localhost:8080 > /dev/null 2>&1; then
+              echo "✓ Spark Master is ready!"
+              break
+            fi
+            echo "  Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          echo ""
+          echo "✓ All services initialized"
+
+      - name: Start Spark Monitoring Job
+        run: |
+          echo "=========================================="
+          echo "Starting Spark Monitoring Job"
+          echo "=========================================="
+          
+          # Clean old checkpoint
+          echo "Cleaning old checkpoint..."
+          docker exec spark-master-monitoring rm -rf /app/checkpoint/influxdb_monitoring 2>/dev/null || true
+          
+          # Wait a bit more for Kafka (from main stack)
+          echo ""
+          echo "Checking Kafka connection..."
+          for i in {1..20}; do
+            if docker exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1; then
+              echo "✓ Kafka is accessible!"
+              break
+            fi
+            echo "  Waiting for Kafka... ($i/20)"
+            sleep 3
+          done
+          
+          # Submit Spark job
+          echo ""
+          echo "Submitting Spark streaming job to InfluxDB..."
+          docker exec -d spark-master-monitoring /opt/spark/bin/spark-submit \
+            --master spark://spark-master-monitoring:7077 \
+            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+            --conf spark.executor.memory=1g \
+            --conf spark.driver.memory=1g \
+            /app/spark_jobs/processor_monitoring.py
+          
+          echo "✓ Spark job submitted"
+          
+          # Wait for job to start
+          echo ""
+          echo "Waiting for job to start processing..."
+          sleep 10
+
+      - name: Verify Deployment
+        run: |
+          echo "=========================================="
+          echo "Verifying Deployment"
+          echo "=========================================="
+          
+          echo ""
+          echo "Running Containers:"
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(influx|grafana|prometheus|spark-.*-monitoring|node-exporter)" || echo "No monitoring containers found"
+          
+          echo ""
+          echo "Container Health Status:"
+          docker ps --filter "name=landslide_" --filter "name=spark-.*-monitoring" --format "{{.Names}}: {{.Status}}"
+          
+          echo ""
+          echo "Checking Spark job logs..."
+          docker logs spark-master-monitoring --tail 50 2>&1 | grep -E "(Starting|SUCCESS|ERROR|✓|✗)" || echo "No job logs yet"
+          
+          echo ""
+          echo "Checking InfluxDB bucket..."
+          docker exec landslide_influxdb influx bucket list --org landslide_org --token my-super-secret-auth-token 2>&1 | grep sensor_data && echo "✓ Bucket exists" || echo "⚠ Bucket check failed"
+
+      - name: Wait for Data Flow
+        run: |
+          echo "=========================================="
+          echo "Waiting for Data to Flow (2 minutes)"
+          echo "=========================================="
+          echo "Pipeline: Kafka -> Spark -> InfluxDB -> Grafana"
+          echo ""
+          
+          # Wait 2 minutes for data to flow
+          for i in {1..4}; do
+            ELAPSED=$((i * 30))
+            echo "[$(date +%H:%M:%S)] Elapsed: ${ELAPSED}s / 120s"
+            
+            # Check for batch processing
+            if [ $ELAPSED -ge 60 ]; then
+              LOGS=$(docker logs spark-master-monitoring 2>&1 | grep "Batch" | tail -3)
+              if [ -n "$LOGS" ]; then
+                echo "  → Spark is processing batches:"
+                echo "$LOGS" | sed 's/^/    /'
+              fi
+            fi
+            
+            sleep 30
+          done
+          
+          echo ""
+          echo "✓ Wait completed"
+
+      - name: Collect Logs
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "Collecting Deployment Logs"
+          echo "=========================================="
+          
+          LOG_DIR="$HOME/monitoring_logs"
+          mkdir -p "$LOG_DIR"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          LOG_FILE="$LOG_DIR/monitoring_deployment_${TIMESTAMP}.log"
+          
+          {
+            echo "=========================================="
+            echo "MONITORING STACK DEPLOYMENT LOG"
+            echo "=========================================="
+            echo "Timestamp: $(date)"
+            echo "Version: ${{ steps.get_version.outputs.VERSION }}"
+            echo "=========================================="
+            echo ""
+            
+            echo "CONTAINER STATUS:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(influx|grafana|prometheus|spark-.*-monitoring|node-exporter)"
+            echo ""
+            
+            echo "=========================================="
+            echo "INFLUXDB LOGS (Last 200 lines)"
+            echo "=========================================="
+            docker logs landslide_influxdb --tail 200 2>&1
+            echo ""
+            
+            echo "=========================================="
+            echo "GRAFANA LOGS (Last 200 lines)"
+            echo "=========================================="
+            docker logs landslide_grafana --tail 200 2>&1
+            echo ""
+            
+            echo "=========================================="
+            echo "PROMETHEUS LOGS (Last 200 lines)"
+            echo "=========================================="
+            docker logs landslide_prometheus --tail 200 2>&1
+            echo ""
+            
+            echo "=========================================="
+            echo "SPARK MONITORING MASTER LOGS (Last 500 lines)"
+            echo "=========================================="
+            docker logs spark-master-monitoring --tail 500 2>&1
+            echo ""
+            
+            echo "=========================================="
+            echo "SPARK MONITORING WORKER LOGS (Last 300 lines)"
+            echo "=========================================="
+            docker logs spark-worker-monitoring --tail 300 2>&1
+            echo ""
+            
+            echo "=========================================="
+            echo "INFLUXDB DATA CHECK"
+            echo "=========================================="
+            echo "Checking if data is being written to InfluxDB..."
+            docker exec landslide_influxdb influx query \
+              --org landslide_org \
+              --token my-super-secret-auth-token \
+              'from(bucket: "sensor_data") |> range(start: -10m) |> limit(n: 10)' 2>&1 || echo "No data or query failed"
+            echo ""
+            
+            echo "=========================================="
+            echo "END OF LOG"
+            echo "=========================================="
+          } > "$LOG_FILE" 2>&1
+          
+          echo ""
+          echo "✓ Log saved to: $LOG_FILE"
+          ls -lh "$LOG_FILE"
+
+      - name: Display Access Information
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "✓ DEPLOYMENT COMPLETED SUCCESSFULLY!"
+          echo "=========================================="
+          echo ""
+          echo "Monitoring Stack Access URLs:"
+          echo "  📊 Grafana:     http://localhost:3000"
+          echo "     Username: admin"
+          echo "     Password: admin"
+          echo ""
+          echo "  💾 InfluxDB:    http://localhost:8086"
+          echo "     Username: admin"
+          echo "     Password: adminpassword"
+          echo "     Token: my-super-secret-auth-token"
+          echo ""
+          echo "  📈 Prometheus:  http://localhost:9091"
+          echo ""
+          echo "  ⚡ Spark UI:    http://localhost:8081"
+          echo ""
+          echo "=========================================="
+          echo "Next Steps:"
+          echo "  1. Configure Grafana data sources"
+          echo "  2. Import dashboards"
+          echo "  3. Set up alerts"
+          echo "=========================================="
+
+      - name: Fix Permissions
+        if: always()
+        run: |
+          echo "Fixing permissions for next deployment..."
+          sudo chown -R $(whoami):$(whoami) server/monitoring 2>/dev/null || true
+          sudo chown -R $(whoami):$(whoami) server/influxdb_config 2>/dev/null || true
+          echo "✓ Permissions fixed"
+

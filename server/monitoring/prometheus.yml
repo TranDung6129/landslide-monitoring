@@ -1,0 +1,67 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'landslide-monitoring'
+    environment: 'production'
+
+# Alertmanager configuration (optional - can be added later)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Node Exporter - System metrics (CPU, RAM, Disk, Network)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'system-metrics'
+
+  # InfluxDB metrics (if exposed)
+  - job_name: 'influxdb'
+    static_configs:
+      - targets: ['influxdb:8086']
+        labels:
+          service: 'influxdb'
+    metrics_path: '/metrics'
+
+  # Spark Master Monitoring
+  - job_name: 'spark-master-monitoring'
+    static_configs:
+      - targets: ['spark-master-monitoring:8080']
+        labels:
+          service: 'spark-master-monitoring'
+    metrics_path: '/metrics/prometheus'
+
+  # Spark Worker Monitoring
+  - job_name: 'spark-worker-monitoring'
+    static_configs:
+      - targets: ['spark-worker-monitoring:8081']
+        labels:
+          service: 'spark-worker-monitoring'
+    metrics_path: '/metrics/prometheus'
+
+  # Kafka JMX Exporter (optional - requires JMX exporter setup)
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['kafka:9999']
+  #       labels:
+  #         service: 'kafka'
+
+  # Zookeeper (optional)
+  # - job_name: 'zookeeper'
+  #   static_configs:
+  #     - targets: ['zookeeper:9999']
+  #       labels:
+  #         service: 'zookeeper'
+
